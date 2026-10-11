@@ -1,9 +1,22 @@
-# Smart Wake (Smarter Wecker für Home Assistant)
+<p align="center">
+  <img src="images/logo.png" alt="Smart Wake Logo" width="220">
+</p>
 
-[![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
-[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1.0%2B-blue.svg)](https://www.home-assistant.io/)
-[![Validate CI](https://github.com/vitals5/ha-smart-wake/actions/workflows/validate.yml/badge.svg)](https://github.com/vitals5/ha-smart-wake/actions/workflows/validate.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<h1 align="center">Smart Wake</h1>
+<p align="center"><b>Smarter Wecker für Home Assistant mit dynamischen Bedingungen, Phasen-Aktionen, Eskalation & Custom Side Panel Dashboard</b></p>
+
+<p align="center">
+  <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=vitals5&repository=ha-smart-wake&category=integration"><img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Open your Home Assistant instance and open a repository inside the Home Assistant Community Store."></a>
+</p>
+
+<p align="center">
+  <a href="https://hacs.xyz"><img src="https://img.shields.io/badge/HACS-Custom-orange.svg" alt="HACS Custom"></a>
+  <a href="https://www.home-assistant.io/"><img src="https://img.shields.io/badge/Home%20Assistant-2024.1.0%2B-blue.svg" alt="Home Assistant"></a>
+  <a href="https://github.com/vitals5/ha-smart-wake/actions/workflows/validate.yml"><img src="https://github.com/vitals5/ha-smart-wake/actions/workflows/validate.yml/badge.svg" alt="Validate CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+</p>
+
+---
 
 **Smart Wake** ist eine hochgradig anpassbare Custom Integration für Home Assistant, die das Konzept des klassischen Weckers revolutioniert. Sie kombiniert native Home Assistant Entitäten, intelligentes Sensor-Gating, eine dynamische Wetter- und Schlafphasen-Verschiebung, eine dreistufige Wecksequenz (Pre-Alarm bis Eskalation), echte Anti-Cheat-Quittierungen sowie ein dediziertes Custom Side Panel Dashboard.
 
@@ -174,28 +187,59 @@ Die Integration registriert automatisch ein eigenes Icon in der Seitenleiste von
 
 ## Automations-Blueprints
 
-Smart Wake liefert gebrauchsfertige Blueprints mit:
+Smart Wake liefert gebrauchsfertige Blueprints mit 1-Click-Import für Home Assistant mit:
 
-1. **Anti-Cheat Quittierung:** Quittiert automatisch, sobald Bewegung im Bad oder Aktivität an der Kaffeemaschine erkannt wird.
-2. **Hardware-Taster Steuerung:** Belegt beliebige Zigbee- oder Z-Wave-Taster mit Einfachklick (Snooze) und Doppelklick (Dismiss).
-3. **Schlechtwetter-Frühwecker Benachrichtigung:** Sendet am Vorabend oder am Morgen eine Smartphone-Push-Benachrichtigung über vorverlegte Weckzeiten.
+### 1. Anti-Cheat Quittierung
+Quittiert automatisch, sobald Bewegung im Bad oder Aktivität an der Kaffeemaschine erkannt wird.
+
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fvitals5%2Fha-smart-wake%2Fmain%2Fblueprints%2Fautomation%2Fsmart_wake%2Fanti_cheat_dismiss.yaml)
+
+### 2. Hardware-Taster Steuerung
+Belegt beliebige Zigbee- oder Z-Wave-Taster mit Einfachklick (Snooze) und Doppelklick (Dismiss).
+
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fvitals5%2Fha-smart-wake%2Fmain%2Fblueprints%2Fautomation%2Fsmart_wake%2Fhardware_button_control.yaml)
+
+### 3. Schlechtwetter-Frühwecker Benachrichtigung
+Sendet am Vorabend oder am Morgen eine Smartphone-Push-Benachrichtigung über vorverlegte Weckzeiten.
+
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fvitals5%2Fha-smart-wake%2Fmain%2Fblueprints%2Fautomation%2Fsmart_wake%2Fweather_early_wake_notification.yaml)
 
 ---
 
 ## Installation
 
-### Installation via HACS (Empfohlen)
-1. Öffne **HACS** in Home Assistant.
-2. Klicke oben rechts auf das Drei-Punkte-Menü → **Benutzerdefinierte Repositories**.
-3. Füge die URL `https://github.com/vitals5/ha-smart-wake` mit der Kategorie **Integration** hinzu.
-4. Klicke auf **Installieren**.
-5. Starte Home Assistant neu.
-6. Gehe zu **Einstellungen → Geräte & Dienste → Integration hinzufügen** und wähle **Smart Wake**.
+### Option 1: HACS 1-Click Installation (Empfohlen)
 
-### Manuelle Installation
-1. Lade das Repository herunter.
-2. Kopiere den Ordner `custom_components/smart_wake` in dein HA-Verzeichnis `config/custom_components/`.
+Klicke einfach auf den folgenden Button, um das Smart Wake Repository direkt in deinem Home Assistant Community Store (HACS) zu öffnen und zu installieren:
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=vitals5&repository=ha-smart-wake&category=integration)
+
+1. Klicke in HACS auf **Herunterladen / Download**.
+2. Starte Home Assistant neu.
+3. Klicke auf den Button unten oder gehe zu **Einstellungen → Geräte & Dienste → Integration hinzufügen** und wähle **Smart Wake**:
+
+[![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=smart_wake)
+
+---
+
+### Option 2: Manuelle HACS-Einrichtung
+1. Öffne **HACS** in Home Assistant.
+2. Klicke oben rechts auf das Drei-Punkte-Menü `⋮` → **Benutzerdefinierte Repositories**.
+3. Füge die Repository-URL ein:
+   ```text
+   https://github.com/vitals5/ha-smart-wake
+   ```
+4. Wähle als Kategorie **Integration**.
+5. Klicke auf **Hinzufügen**, dann auf **Herunterladen**.
+6. Starte Home Assistant neu.
+
+---
+
+### Option 3: Manuelle Datei-Installation
+1. Lade das Release-Archiv oder das Repository herunter.
+2. Kopiere den Ordner `custom_components/smart_wake` in dein Home Assistant Verzeichnis `config/custom_components/smart_wake`.
 3. Starte Home Assistant neu.
+4. Richte deinen ersten Wecker unter **Einstellungen → Geräte & Dienste → Integration hinzufügen → Smart Wake** ein.
 
 ---
 
@@ -203,10 +247,10 @@ Smart Wake liefert gebrauchsfertige Blueprints mit:
 
 | Dienst | Parameter | Beschreibung |
 |---|---|---|
-| `smart_wake.snooze` | `alarm_id`, `duration` | Schlummert einen aktiven Wecker. |
-| `smart_wake.dismiss` | `alarm_id` | Quittiert und beendet einen aktiven Wecker. |
-| `smart_wake.test_alarm` | `alarm_id` | Startet den 30-Sekunden-Zeitraffer-Testlauf. |
-| `smart_wake.stop_test` | `alarm_id` | Bricht einen laufenden Testlauf ab. |
+| `smart_wake.snooze` | `alarm_id`, `duration` | Schlummert einen aktiven Wecker für die konfigurierte Dauer oder benutzerdefinierte Minuten. |
+| `smart_wake.dismiss` | `alarm_id` | Quittiert und beendet einen aktiven Wecker oder Vor-Alarm. |
+| `smart_wake.test_alarm` | `alarm_id` | Startet den 30-Sekunden-Zeitraffer-Testlauf (Licht, Audio, Rollos). |
+| `smart_wake.stop_test` | `alarm_id` | Bricht einen laufenden Testlauf sofort ab. |
 | `smart_wake.set_time` | `alarm_id`, `time` | Setzt eine neue Weckzeit (z. B. `"06:45"`). |
 | `smart_wake.skip_next` | `alarm_id`, `skip` | Überspringt einmalig den nächsten regulären Wecklauf. |
 
