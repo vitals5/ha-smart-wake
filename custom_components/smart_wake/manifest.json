@@ -1,0 +1,18 @@
+{
+  "domain": "smart_wake",
+  "name": "Smart Wake",
+  "codeowners": [
+    "@vitals5"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "frontend",
+    "http",
+    "websocket_api"
+  ],
+  "documentation": "https://github.com/vitals5/ha-smart-wake",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/vitals5/ha-smart-wake/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}

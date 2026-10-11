@@ -1,0 +1,43 @@
+language: "en"
+intents:
+  SmartWakeSetTime:
+    data:
+      - sentences:
+          - "set [the] [alarm] {alarm} to {time}"
+          - "set the alarm to {time}"
+          - "wake me up tomorrow at {time}"
+          - "wake me up at {time}"
+
+  SmartWakeSetStatus:
+    data:
+      - sentences:
+          - "turn on [the] alarm {alarm}"
+          - "enable [the] alarm {alarm}"
+          - "turn on the alarm"
+        slots:
+          status: "on"
+      - sentences:
+          - "turn off [the] alarm {alarm}"
+          - "disable [the] alarm {alarm}"
+          - "turn off the alarm"
+          - "turn off the alarm for tomorrow"
+        slots:
+          status: "off"
+
+  SmartWakeSnooze:
+    data:
+      - sentences:
+          - "snooze [the] [alarm] [for] {duration} minutes"
+          - "snooze five minutes"
+          - "snooze alarm"
+          - "snooze"
+          - "sleep five more minutes"
+
+  SmartWakeDismiss:
+    data:
+      - sentences:
+          - "i am awake"
+          - "stop [the] alarm"
+          - "turn off the alarm"
+          - "dismiss [the] alarm"
+          - "dismiss"

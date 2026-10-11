@@ -1,0 +1,171 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Smart Wake - New Alarm Clock",
+        "description": "Create a new smart alarm clock instance (e.g. Bedroom Alarm, Kid's Room, Office).",
+        "data": {
+          "name": "Alarm Name",
+          "time": "Alarm Time (HH:MM)",
+          "enabled": "Enable alarm immediately",
+          "days": "Active Weekdays"
+        }
+      }
+    },
+    "error": {
+      "invalid_name": "Please provide a valid alarm name.",
+      "already_configured": "An alarm with this name already exists."
+    },
+    "abort": {
+      "already_configured": "This alarm is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Smart Wake Options",
+        "description": "Select a category to configure your smart alarm:",
+        "menu_options": {
+          "schedule": "⏰ Schedule, Workdays & Calendar",
+          "conditions": "👥 Presence, Weather & Sleep Tracker",
+          "phase1_pre_alarm": "🌅 Phase 1: Pre-Alarm (Gentle Wake)",
+          "phase2_main_alarm": "🔔 Phase 2: Main Alarm (Audio & TTS)",
+          "phase3_escalation": "⚡ Phase 3: Escalation (Anti-Oversleep)",
+          "snooze_dismiss": "🛑 Dismiss, Snooze & Anti-Cheat"
+        }
+      },
+      "schedule": {
+        "title": "Schedule & Calendar",
+        "data": {
+          "time": "Target Time (HH:MM)",
+          "days": "Active Days",
+          "workday_entity": "Workday sensor entity (optional)",
+          "workday_only": "Trigger on workdays only",
+          "calendar_entity": "Calendar entity (optional)",
+          "calendar_behavior": "Calendar filter mode"
+        }
+      },
+      "conditions": {
+        "title": "Presence & Dynamic Triggers",
+        "data": {
+          "person_entities": "Assigned people (person.*)",
+          "person_home_required": "Only trigger when assigned person is home",
+          "weather_temp_entity": "Outdoor temperature sensor",
+          "weather_temp_threshold": "Freezing temperature threshold (°C)",
+          "weather_temp_offset": "Early wake defrost offset (minutes)",
+          "weather_rain_entity": "Rain / precipitation sensor",
+          "weather_rain_offset": "Rain early wake offset (minutes)",
+          "sleep_stage_entity": "Sleep stage sensor",
+          "sleep_stage_window": "Light sleep wake window (minutes before alarm)"
+        }
+      },
+      "phase1_pre_alarm": {
+        "title": "Phase 1: Pre-Alarm (Gentle Wake)",
+        "data": {
+          "pre_alarm_enabled": "Enable pre-alarm phase",
+          "pre_alarm_duration": "Pre-alarm duration before alarm (minutes)",
+          "pre_alarm_light_entities": "Wake-up lights (light.*)",
+          "pre_alarm_light_start_brightness": "Start light brightness (%)",
+          "pre_alarm_light_end_brightness": "Target light brightness (%)",
+          "pre_alarm_climate_entities": "Thermostats / Climate (climate.*)",
+          "pre_alarm_climate_temp_delta": "Temperature increase (°C)",
+          "pre_alarm_cover_entities": "Covers / Blinds (cover.*)",
+          "pre_alarm_cover_position": "Tilt / open blinds to (%)",
+          "pre_alarm_script_entity": "Custom pre-alarm script (script.*)"
+        }
+      },
+      "phase2_main_alarm": {
+        "title": "Phase 2: Main Alarm",
+        "data": {
+          "main_media_player_entities": "Playback devices (media_player.*)",
+          "main_audio_content_id": "Audio stream / playlist URL / chime",
+          "main_audio_fade_in": "Enable soft audio fade-in",
+          "main_audio_fade_duration": "Fade-in duration (seconds)",
+          "main_audio_target_volume": "Target audio volume (0.1 - 1.0)",
+          "main_tts_enabled": "Enable TTS morning briefing",
+          "main_tts_message": "TTS template ({time}, {temp}, {name})",
+          "main_script_entity": "Custom HA script (script.*)"
+        }
+      },
+      "phase3_escalation": {
+        "title": "Phase 3: Escalation Mode",
+        "data": {
+          "escalation_enabled": "Enable anti-oversleep escalation",
+          "escalation_delay": "Delay after main alarm (minutes)",
+          "escalation_volume": "Escalation volume (e.g. 0.9 = 90%)",
+          "escalation_light_entities": "Room main lights (light.*)",
+          "escalation_light_brightness": "Escalation brightness (%)",
+          "escalation_cover_entities": "Covers (cover.*)",
+          "escalation_cover_position": "Open covers completely to (%)",
+          "escalation_script_entity": "Escalation script (script.*)"
+        }
+      },
+      "snooze_dismiss": {
+        "title": "Dismiss, Snooze & Anti-Cheat",
+        "data": {
+          "snooze_duration": "Snooze duration (minutes)",
+          "max_snooze_count": "Maximum allowed snoozes",
+          "dismiss_button_entity": "Hardware dismiss button",
+          "snooze_button_entity": "Hardware snooze button",
+          "dismiss_motion_entities": "Anti-cheat motion detectors (bathroom/kitchen)",
+          "dismiss_power_sensor": "Anti-cheat appliance power sensor",
+          "dismiss_power_threshold": "Power threshold to dismiss (Watts)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "time": {
+      "time": {
+        "name": "Alarm Time"
+      }
+    },
+    "switch": {
+      "enabled": {
+        "name": "Enabled"
+      }
+    },
+    "sensor": {
+      "status": {
+        "name": "Status"
+      },
+      "next_alarm": {
+        "name": "Next Alarm"
+      },
+      "active_phase": {
+        "name": "Active Phase"
+      },
+      "snooze_count": {
+        "name": "Snooze Count"
+      },
+      "dynamic_offset": {
+        "name": "Dynamic Weather Offset"
+      }
+    },
+    "button": {
+      "snooze": {
+        "name": "Snooze"
+      },
+      "dismiss": {
+        "name": "Dismiss"
+      },
+      "test": {
+        "name": "Test Alarm (Dry-Run)"
+      },
+      "skip_next": {
+        "name": "Skip Next Alarm"
+      }
+    },
+    "number": {
+      "snooze_duration": {
+        "name": "Snooze Duration"
+      },
+      "max_snooze_count": {
+        "name": "Max Snooze Count"
+      },
+      "pre_alarm_duration": {
+        "name": "Pre-Alarm Duration"
+      }
+    }
+  }
+}

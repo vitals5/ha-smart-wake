@@ -1,0 +1,85 @@
+snooze:
+  name: Wecker schlummern (Snooze)
+  description: Schlummert einen aktiven Wecker für die konfigurierte Dauer oder eine benutzerdefinierte Minutenzahl.
+  fields:
+    alarm_id:
+      name: Wecker ID oder Name
+      description: Name oder Config Entry ID des Weckers. Wenn leer, wird der aktuell klingelnde Wecker geschlummert.
+      example: "Wecker Schlafzimmer"
+      selector:
+        text:
+    duration:
+      name: Schlummerdauer (Minuten)
+      description: Optionale Schlummerdauer in Minuten. Wenn nicht angegeben, wird der Standardwert verwendet.
+      example: 9
+      selector:
+        number:
+          min: 1
+          max: 60
+          unit_of_measurement: min
+
+dismiss:
+  name: Wecker quittieren (Dismiss)
+  description: Quittiert und beendet einen aktiven Wecker oder Vor-Alarm.
+  fields:
+    alarm_id:
+      name: Wecker ID oder Name
+      description: Name oder Config Entry ID des Weckers. Wenn leer, werden alle aktiven Wecker beendet.
+      example: "Wecker Schlafzimmer"
+      selector:
+        text:
+
+test_alarm:
+  name: Testlauf starten (30s Zeitraffer)
+  description: Startet einen 30-sekündigen Testlauf zur Vorschau von Licht-Fade, Audio-Lautstärke und Rollos.
+  fields:
+    alarm_id:
+      name: Wecker ID oder Name
+      description: Der zu testende Wecker.
+      example: "Wecker Schlafzimmer"
+      selector:
+        text:
+
+stop_test:
+  name: Testlauf stoppen
+  description: Bricht einen laufenden 30-Sekunden-Testlauf vorzeitig ab.
+  fields:
+    alarm_id:
+      name: Wecker ID oder Name
+      description: Der Wecker, dessen Test gestoppt werden soll.
+      selector:
+        text:
+
+skip_next:
+  name: Nächsten Alarm überspringen
+  description: Überspringt einmalig den nächsten regulären Wecklauf, ohne den Wecker dauerhaft auszuschalten.
+  fields:
+    alarm_id:
+      name: Wecker ID oder Name
+      description: Der Wecker, dessen nächster Lauf übersprungen werden soll.
+      selector:
+        text:
+    skip:
+      name: Überspringen aktivieren
+      description: True um zu überspringen, False um die Überspringung aufzuheben.
+      default: true
+      selector:
+        boolean:
+
+set_time:
+  name: Weckzeit einstellen
+  description: Setzt eine neue Weckzeit für einen Smart Wake Wecker.
+  fields:
+    time:
+      name: Weckzeit (HH:MM)
+      description: Die neue Weckzeit im Format HH:MM.
+      required: true
+      example: "06:45"
+      selector:
+        time:
+    alarm_id:
+      name: Wecker ID oder Name
+      description: Zielwecker für die Zeiteinstellung.
+      example: "Wecker Schlafzimmer"
+      selector:
+        text:

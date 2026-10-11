@@ -1,0 +1,32 @@
+blueprint:
+  name: "Smart Wake - Winter/Schlechtwetter Frühwecker Benachrichtigung"
+  description: "Sendet eine Benachrichtigung an das Smartphone, wenn der Smart Wake Wecker wegen Frost oder Regen automatisch früher weckt."
+  domain: automation
+  input:
+    alarm_offset_sensor:
+      name: Smart Wake Dynamischer Offset Sensor
+      description: Der 'dynamic_offset' Sensor des Weckers.
+      selector:
+        entity:
+          domain: sensor
+          integration: smart_wake
+    notify_device:
+      name: Benachrichtigungsgerät
+      description: Das Smartphone für Push-Nachrichten.
+      selector:
+        device:
+          integration: mobile_app
+
+trigger:
+  - platform: numeric_state
+    entity_id: !input alarm_offset_sensor
+    above: 0
+
+action:
+  - domain: mobile_app
+    type: notify
+    device_id: !input notify_device
+    title: "❄️ Smart Wake: Früheres Wecken aktiv"
+    message: >
+      Achtung: Wegen Frost oder Glätte klingelt dein Wecker morgen {{ states(alarm_offset_sensor) }} Minuten früher zum Scheiben kratzen!
+mode: single

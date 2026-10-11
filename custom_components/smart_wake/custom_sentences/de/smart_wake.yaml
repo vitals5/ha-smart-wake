@@ -1,0 +1,51 @@
+language: "de"
+intents:
+  SmartWakeSetTime:
+    data:
+      - sentences:
+          - "stelle [den] [wecker] {alarm} auf {time} [uhr]"
+          - "stelle den wecker auf {time} [uhr]"
+          - "wecke mich morgen um {time} [uhr]"
+          - "wecke mich um {time} [uhr]"
+          - "ändere [den] wecker {alarm} auf {time} [uhr]"
+
+  SmartWakeSetStatus:
+    data:
+      - sentences:
+          - "schalte [den] wecker {alarm} {status}"
+          - "schalte [den] wecker {status}"
+          - "wecker {alarm} {status}"
+          - "{status} [den] wecker {alarm}"
+          - "aktiviere [den] [schul-]wecker {alarm}"
+          - "schalte den wecker für morgen aus"
+        slots:
+          status: "ein"
+      - sentences:
+          - "schalte [den] wecker {alarm} aus"
+          - "schalte [den] wecker aus"
+          - "deaktiviere [den] wecker {alarm}"
+        slots:
+          status: "aus"
+
+  SmartWakeSnooze:
+    data:
+      - sentences:
+          - "{duration} minuten weiterschlafen"
+          - "fünf minuten weiterschlafen"
+          - "zehn minuten weiterschlafen"
+          - "noch ein bisschen weiterschlafen"
+          - "wecker schlummern"
+          - "wecker {alarm} schlummern"
+          - "schlummern"
+          - "snooze"
+
+  SmartWakeDismiss:
+    data:
+      - sentences:
+          - "ich bin wach"
+          - "wecker stoppen"
+          - "wecker aus"
+          - "wecker {alarm} stoppen"
+          - "wecker ausschalten"
+          - "alarm beenden"
+          - "wecker quittieren"
