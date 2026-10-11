@@ -19,10 +19,12 @@ except Exception:
     ConfigType = dict
 
 from .const import (
+    BRAND_DIR,
     DOMAIN,
     FRONTEND_DIR,
     PLATFORMS,
     URL_BASE,
+    URL_BRAND,
     VERSION,
 )
 from .coordinator import SmartWakeAlarm
@@ -101,19 +103,24 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def _async_setup_frontend(hass: HomeAssistant) -> None:
     """Register HTTP static path, Lovelace dashboard card, and custom sidebar panel."""
-    # 1. Register static path for frontend assets
+    # 1. Register static path for frontend assets and brand files
     if hasattr(hass, "http"):
         if hasattr(hass.http, "async_register_static_paths"):
             try:
                 from homeassistant.components.http import StaticPathConfig
-                await hass.http.async_register_static_paths([
+                static_configs = [
                     StaticPathConfig(URL_BASE, FRONTEND_DIR, cache_headers=False)
-                ])
+                ]
+                if os.path.exists(BRAND_DIR):
+                    static_configs.append(StaticPathConfig(URL_BRAND, BRAND_DIR, cache_headers=False))
+                await hass.http.async_register_static_paths(static_configs)
             except Exception as err:
                 _LOGGER.debug("StaticPathConfig registration error: %s", err)
         elif hasattr(hass.http, "register_static_path"):
             try:
                 hass.http.register_static_path(URL_BASE, FRONTEND_DIR, cache_headers=False)
+                if os.path.exists(BRAND_DIR):
+                    hass.http.register_static_path(URL_BRAND, BRAND_DIR, cache_headers=False)
             except Exception as err:
                 _LOGGER.debug("register_static_path error: %s", err)
 

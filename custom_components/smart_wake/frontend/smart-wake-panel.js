@@ -145,6 +145,55 @@ class SmartWakePanel extends HTMLElement {
     }
   }
 
+  _toggleSidebar() {
+    // 1. Dispatch standard Home Assistant event (bubbles across shadow DOM)
+    const ev = new CustomEvent("hass-toggle-menu", {
+      bubbles: true,
+      composed: true,
+      cancelable: false,
+      detail: {},
+    });
+    this.dispatchEvent(ev);
+    window.dispatchEvent(ev);
+
+    // 2. Direct DOM dispatch to Home Assistant main elements if accessible
+    try {
+      const ha = document.querySelector("home-assistant");
+      if (ha) {
+        ha.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true }));
+        if (ha.shadowRoot) {
+          const haMain = ha.shadowRoot.querySelector("home-assistant-main");
+          if (haMain) {
+            haMain.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true }));
+            const drawer =
+              haMain.shadowRoot?.querySelector("ha-drawer") ||
+              haMain.shadowRoot?.querySelector("ha-sidebar");
+            if (drawer && typeof drawer.toggle === "function") {
+              drawer.toggle();
+            } else if (drawer && "open" in drawer) {
+              drawer.open = !drawer.open;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.debug("Direct DOM sidebar toggle notice:", e);
+    }
+
+    // 3. Parent window dispatch if embedded in an iframe
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true }));
+        const parentHa = window.parent.document?.querySelector("home-assistant");
+        if (parentHa) {
+          parentHa.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true }));
+        }
+      }
+    } catch (e) {
+      // Cross-origin iframe fallback
+    }
+  }
+
   _openNewAlarmFlow() {
     window.location.href = "/config/integrations/dashboard/add?domain=smart_wake";
   }
@@ -227,11 +276,76 @@ class SmartWakePanel extends HTMLElement {
         .title-group {
           display: flex;
           align-items: center;
-          gap: 12px;
+          gap: 14px;
         }
 
-        .title-icon {
+        .logo-menu-btn {
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.15));
+          border-radius: 12px;
+          padding: 3px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: relative;
+          color: var(--primary-text-color, #e1e2e5);
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          outline: none;
+        }
+
+        .logo-menu-btn:hover {
+          background: rgba(255, 255, 255, 0.1);
+          border-color: var(--primary-color, #03a9f4);
+          transform: translateY(-1px) scale(1.04);
+          box-shadow: 0 4px 14px rgba(3, 169, 244, 0.35);
+        }
+
+        .logo-menu-btn:active {
+          transform: translateY(0) scale(0.96);
+        }
+
+        .logo-wrapper {
+          position: relative;
+          width: 44px;
+          height: 44px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .logo-img {
+          width: 44px;
+          height: 44px;
+          border-radius: 9px;
+          object-fit: cover;
+          display: block;
+        }
+
+        .logo-fallback {
           font-size: 32px;
+          line-height: 1;
+        }
+
+        .menu-icon-badge {
+          position: absolute;
+          bottom: -4px;
+          right: -4px;
+          background: var(--primary-color, #03a9f4);
+          color: #ffffff;
+          border-radius: 50%;
+          width: 18px;
+          height: 18px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+          border: 1.5px solid var(--primary-background-color, #111417);
+          transition: transform 0.2s;
+        }
+
+        .logo-menu-btn:hover .menu-icon-badge {
+          transform: scale(1.1);
         }
 
         h1 {
@@ -559,7 +673,27 @@ class SmartWakePanel extends HTMLElement {
 
       <div class="header">
         <div class="title-group">
-          <div class="title-icon">⏰</div>
+          <button
+            class="logo-menu-btn"
+            id="btnToggleMenu"
+            title="Seitenmenü öffnen (Sidebar)"
+            aria-label="Seitenmenü öffnen"
+          >
+            <div class="logo-wrapper">
+              <img
+                src="/smart_wake_frontend/icon.png"
+                alt="Smart Wake Logo"
+                class="logo-img"
+                onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
+              />
+              <span class="logo-fallback" style="display: none;">⏰</span>
+              <div class="menu-icon-badge" title="Seitenmenü öffnen">
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor">
+                  <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+                </svg>
+              </div>
+            </div>
+          </button>
           <div>
             <h1>SMART WAKE DASHBOARD</h1>
             <div class="subtitle">Smarter Wecker mit dynamischen Bedingungen, Phasen-Aktionen & Eskalation</div>
@@ -574,6 +708,9 @@ class SmartWakePanel extends HTMLElement {
     `;
 
     // Attach listeners
+    const btnToggleMenu = this.shadowRoot.getElementById("btnToggleMenu");
+    if (btnToggleMenu) btnToggleMenu.onclick = () => this._toggleSidebar();
+
     const btnAdd = this.shadowRoot.getElementById("btnAdd");
     if (btnAdd) btnAdd.onclick = () => this._openNewAlarmFlow();
 
