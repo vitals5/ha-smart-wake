@@ -12,1113 +12,7 @@ const WEEKDAYS = [
   { id: "sun", label: "So" },
 ];
 
-class SmartWakePanel extends HTMLElement {
-  constructor() {
-    super();
-    this.attachShadow({ mode: "open" });
-    this._hass = null;
-    this._alarms = [];
-    this._loading = true;
-    this._testInterval = null;
-
-    // Modal state for in-panel settings
-    this._editingAlarmId = null; // null = closed, "__new__" = creating new, or alarmId
-    this._editConfig = null;
-    this._activeTab = "general";
-    this._saving = false;
-
-    // Test selection modal state
-    this._testModalAlarmId = null;
-  }
-
-  set hass(hass) {
-    const oldHass = this._hass;
-    this._hass = hass;
-    if (!oldHass) {
-      this._fetchAlarms();
-      this._subscribeUpdates();
-    }
-    if (this._editingAlarmId) {
-      this._refreshAllPreviewChips();
-    }
-  }
-
-  connectedCallback() {
-    this._render();
-    if (this._hass) {
-      this._fetchAlarms();
-    }
-    // Update countdown timers every 10 seconds (only when modal is not open)
-    this._timer = setInterval(() => {
-      if (!this._editingAlarmId) {
-        this._render();
-      }
-    }, 10000);
-  }
-
-  disconnectedCallback() {
-    if (this._timer) clearInterval(this._timer);
-    if (this._testInterval) clearInterval(this._testInterval);
-    if (this._unsubEvents) {
-      this._unsubEvents();
-      this._unsubEvents = null;
-    }
-  }
-
-  async _fetchAlarms() {
-    if (!this._hass) return;
-    try {
-      const res = await this._hass.callWS({ type: "smart_wake/get_alarms" });
-      this._alarms = res.alarms || [];
-      this._loading = false;
-      this._render();
-    } catch (err) {
-      console.error("Failed to fetch Smart Wake alarms:", err);
-      this._loading = false;
-      this._render();
-    }
-  }
-
-  async _subscribeUpdates() {
-    if (!this._hass || this._unsubEvents) return;
-    try {
-      this._unsubEvents = await this._hass.connection.subscribeEvents((event) => {
-        if (event.event_type && event.event_type.startsWith("smart_wake_")) {
-          this._fetchAlarms();
-        }
-      }, "smart_wake_status_changed");
-    } catch (err) {
-      console.debug("Could not subscribe to smart_wake events:", err);
-    }
-  }
-
-  async _toggleAlarm(alarmId, enabled) {
-    if (!this._hass) return;
-    try {
-      await this._hass.callWS({
-        type: "smart_wake/toggle",
-        alarm_id: alarmId,
-        enabled: enabled,
-      });
-      await this._fetchAlarms();
-    } catch (err) {
-      console.error("Toggle alarm failed:", err);
-    }
-  }
-
-  _showToast(msg, duration = 4000) {
-    if (!this.shadowRoot) return;
-    let toast = this.shadowRoot.getElementById("smartWakeToast");
-    if (!toast) {
-      toast = document.createElement("div");
-      toast.id = "smartWakeToast";
-      toast.className = "sw-toast";
-      this.shadowRoot.appendChild(toast);
-    }
-    toast.textContent = msg;
-    toast.classList.add("visible");
-    if (this._toastTimeout) clearTimeout(this._toastTimeout);
-    this._toastTimeout = setTimeout(() => {
-      toast.classList.remove("visible");
-    }, duration);
-  }
-
-  async _snoozeAlarm(alarmId) {
-    if (!this._hass) return;
-    try {
-      const res = await this._hass.callWS({
-        type: "smart_wake/snooze",
-        alarm_id: alarmId,
-      });
-      await this._fetchAlarms();
-      if (res && res.snoozed) {
-        this._showToast("💤 Wecker pausiert und schlummert...");
-      } else {
-        this._showToast("⚠️ Schlummern nicht möglich oder Maximum erreicht!", 4000);
-      }
-    } catch (err) {
-      this._showToast("⚠️ Schlummern nicht möglich oder Maximum erreicht!", 4000);
-    }
-  }
-
-  async _dismissAlarm(alarmId) {
-    if (!this._hass) return;
-    try {
-      const res = await this._hass.callWS({
-        type: "smart_wake/dismiss",
-        alarm_id: alarmId,
-      });
-      await this._fetchAlarms();
-      if (res && res.snoozed) {
-        this._showToast("🛡️ Anti-Cheat aktiv: Quittierung wirkt als Schlummern, bis Aufsteh-Beweis (Bewegungsmelder, Leistungsmesser oder NFC) erbracht ist!", 5000);
-      } else if (res && res.dismissed) {
-        this._showToast("🛑 Wecker erfolgreich beendet und quittiert!", 3000);
-      }
-    } catch (err) {
-      console.error("Dismiss failed:", err);
-    }
-  }
-
-  async _startDryRun(alarmId) {
-    if (!this._hass) return;
-    try {
-      await this._hass.callWS({
-        type: "smart_wake/test_alarm",
-        alarm_id: alarmId,
-        mode: "dry_run",
-      });
-      await this._fetchAlarms();
-
-      // Poll progress during test
-      if (this._testInterval) clearInterval(this._testInterval);
-      this._testInterval = setInterval(async () => {
-        await this._fetchAlarms();
-        const a = this._alarms.find((x) => x.id === alarmId);
-        if (!a || !a.is_testing) {
-          clearInterval(this._testInterval);
-        }
-      }, 1000);
-    } catch (err) {
-      console.error("Dry run test failed:", err);
-      alert("Fehler beim Starten des Zeitraffer-Tests: " + (err.message || err));
-    }
-  }
-
-  async _startFullTest(alarmId, startFromPreAlarm = false) {
-    if (!this._hass) return;
-    try {
-      await this._hass.callWS({
-        type: "smart_wake/start_full_test",
-        alarm_id: alarmId,
-        start_from_pre_alarm: startFromPreAlarm,
-      });
-      await this._fetchAlarms();
-
-      // Poll updates during full test
-      if (this._testInterval) clearInterval(this._testInterval);
-      this._testInterval = setInterval(async () => {
-        await this._fetchAlarms();
-        const a = this._alarms.find((x) => x.id === alarmId);
-        if (!a || !a.is_testing) {
-          clearInterval(this._testInterval);
-        }
-      }, 2000);
-    } catch (err) {
-      console.error("Full test failed:", err);
-      alert("Fehler beim Starten des vollen Testlaufs: " + (err.message || err));
-    }
-  }
-
-  async _stopTest(alarmId) {
-    if (!this._hass) return;
-    try {
-      await this._hass.callWS({
-        type: "smart_wake/stop_test",
-        alarm_id: alarmId,
-      });
-      if (this._testInterval) clearInterval(this._testInterval);
-      await this._fetchAlarms();
-    } catch (err) {
-      console.error("Stop test failed:", err);
-    }
-  }
-
-  _openTestModal(alarmId) {
-    this._testModalAlarmId = alarmId;
-    this._render();
-  }
-
-  _closeTestModal() {
-    this._testModalAlarmId = null;
-    this._render();
-  }
-
-  _toggleSidebar() {
-    // 1. Dispatch standard Home Assistant event (bubbles across shadow DOM)
-    const ev = new CustomEvent("hass-toggle-menu", {
-      bubbles: true,
-      composed: true,
-      cancelable: false,
-      detail: {},
-    });
-    this.dispatchEvent(ev);
-    window.dispatchEvent(ev);
-
-    // 2. Direct DOM dispatch to Home Assistant main elements if accessible
-    try {
-      const ha = document.querySelector("home-assistant");
-      if (ha) {
-        ha.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true }));
-        if (ha.shadowRoot) {
-          const haMain = ha.shadowRoot.querySelector("home-assistant-main");
-          if (haMain) {
-            haMain.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true }));
-            const drawer =
-              haMain.shadowRoot?.querySelector("ha-drawer") ||
-              haMain.shadowRoot?.querySelector("ha-sidebar");
-            if (drawer && typeof drawer.toggle === "function") {
-              drawer.toggle();
-            } else if (drawer && "open" in drawer) {
-              drawer.open = !drawer.open;
-            }
-          }
-        }
-      }
-    } catch (e) {
-      console.debug("Direct DOM sidebar toggle notice:", e);
-    }
-
-    // 3. Parent window dispatch if embedded in an iframe
-    try {
-      if (window.parent && window.parent !== window) {
-        window.parent.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true }));
-        const parentHa = window.parent.document?.querySelector("home-assistant");
-        if (parentHa) {
-          parentHa.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true }));
-        }
-      }
-    } catch (e) {
-      // Cross-origin iframe fallback
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // In-Panel Settings Modal Logic
-  // ---------------------------------------------------------------------------
-  _openSettingsModal(alarmId = null) {
-    this._editingAlarmId = alarmId || "__new__";
-    this._activeTab = "general";
-    this._saving = false;
-
-    if (alarmId) {
-      const alarm = this._alarms.find((a) => a.id === alarmId);
-      const rawCfg = (alarm && alarm.config) || {};
-      const sumCfg = (alarm && alarm.config_summary) || {};
-
-      this._editConfig = {
-        name: alarm ? alarm.name : "Wecker",
-        time: alarm ? alarm.time : "06:30",
-        enabled: alarm ? Boolean(alarm.enabled) : true,
-        days: alarm && alarm.days ? [...alarm.days] : ["mon", "tue", "wed", "thu", "fri"],
-
-        // Conditions
-        workday_only: Boolean(rawCfg.workday_only ?? sumCfg.workday_only ?? false),
-        workday_entity: rawCfg.workday_entity ?? sumCfg.workday_entity ?? "",
-        person_home_required: Boolean(rawCfg.person_home_required ?? sumCfg.person_home_required ?? false),
-        person_entities: Array.isArray(rawCfg.person_entities)
-          ? rawCfg.person_entities.join(", ")
-          : (sumCfg.person_entities ? sumCfg.person_entities.join(", ") : ""),
-        calendar_entity: rawCfg.calendar_entity ?? "",
-        calendar_behavior: rawCfg.calendar_behavior ?? "none",
-        weather_temp_entity: rawCfg.weather_temp_entity ?? sumCfg.weather_temp_entity ?? "",
-        weather_temp_threshold: rawCfg.weather_temp_threshold ?? 0.0,
-        weather_temp_offset: rawCfg.weather_temp_offset ?? 15,
-        weather_rain_entity: rawCfg.weather_rain_entity ?? "",
-        weather_rain_offset: rawCfg.weather_rain_offset ?? 10,
-        sleep_stage_entity: rawCfg.sleep_stage_entity ?? "",
-        sleep_stage_window: rawCfg.sleep_stage_window ?? 30,
-
-        // Phase 1: Pre-Alarm
-        pre_alarm_enabled: Boolean(rawCfg.pre_alarm_enabled ?? true),
-        pre_alarm_duration: rawCfg.pre_alarm_duration ?? alarm?.pre_alarm_duration ?? 15,
-        pre_alarm_light_entities: Array.isArray(rawCfg.pre_alarm_light_entities)
-          ? rawCfg.pre_alarm_light_entities.join(", ")
-          : (sumCfg.pre_alarm_lights ? sumCfg.pre_alarm_lights.join(", ") : ""),
-        pre_alarm_light_start_brightness: rawCfg.pre_alarm_light_start_brightness ?? 1,
-        pre_alarm_light_end_brightness: rawCfg.pre_alarm_light_end_brightness ?? 80,
-        pre_alarm_cover_entities: Array.isArray(rawCfg.pre_alarm_cover_entities)
-          ? rawCfg.pre_alarm_cover_entities.join(", ")
-          : (sumCfg.pre_alarm_covers ? sumCfg.pre_alarm_covers.join(", ") : ""),
-        pre_alarm_cover_position: rawCfg.pre_alarm_cover_position ?? 20,
-        pre_alarm_script_entity: rawCfg.pre_alarm_script_entity ?? "",
-
-        // Phase 2: Main Alarm
-        main_media_player_entities: Array.isArray(rawCfg.main_media_player_entities)
-          ? rawCfg.main_media_player_entities.join(", ")
-          : (sumCfg.main_media_players ? sumCfg.main_media_players.join(", ") : ""),
-        main_audio_content_id: rawCfg.main_audio_content_id ?? sumCfg.main_audio_content ?? "",
-        main_audio_content_type: rawCfg.main_audio_content_type ?? "music",
-        main_audio_fade_in: Boolean(rawCfg.main_audio_fade_in ?? true),
-        main_audio_fade_duration: rawCfg.main_audio_fade_duration ?? 30,
-        main_audio_target_volume: Math.round((rawCfg.main_audio_target_volume ?? 0.5) * 100),
-        main_tts_enabled: Boolean(rawCfg.main_tts_enabled ?? sumCfg.main_tts_enabled ?? false),
-        main_tts_message: rawCfg.main_tts_message ?? "Guten Morgen! Es ist {time} Uhr, draußen sind es {temp}°C.",
-        main_tts_engine: rawCfg.main_tts_engine ?? "",
-        main_script_entity: rawCfg.main_script_entity ?? "",
-
-        // Phase 3: Escalation
-        escalation_enabled: Boolean(rawCfg.escalation_enabled ?? true),
-        escalation_delay: rawCfg.escalation_delay ?? sumCfg.escalation_delay ?? 10,
-        escalation_volume: Math.round((rawCfg.escalation_volume ?? sumCfg.escalation_volume ?? 0.9) * 100),
-        escalation_volume_fade_duration: rawCfg.escalation_volume_fade_duration ?? sumCfg.escalation_volume_fade_duration ?? 30,
-        escalation_light_entities: Array.isArray(rawCfg.escalation_light_entities)
-          ? rawCfg.escalation_light_entities.join(", ")
-          : "",
-        escalation_light_brightness: rawCfg.escalation_light_brightness ?? 100,
-        escalation_light_cold_white: Boolean(rawCfg.escalation_light_cold_white ?? true),
-        escalation_cover_entities: Array.isArray(rawCfg.escalation_cover_entities)
-          ? rawCfg.escalation_cover_entities.join(", ")
-          : "",
-        escalation_cover_position: rawCfg.escalation_cover_position ?? 100,
-        escalation_script_entity: rawCfg.escalation_script_entity ?? "",
-
-        // Snooze & Anti-Cheat
-        snooze_duration: rawCfg.snooze_duration ?? alarm?.snooze_duration ?? 8,
-        max_snooze_count: rawCfg.max_snooze_count ?? alarm?.max_snooze_count ?? 2,
-        snooze_button_entity: rawCfg.snooze_button_entity ?? "",
-        dismiss_button_entity: rawCfg.dismiss_button_entity ?? sumCfg.dismiss_button ?? "",
-        dismiss_motion_entities: Array.isArray(rawCfg.dismiss_motion_entities)
-          ? rawCfg.dismiss_motion_entities.join(", ")
-          : (sumCfg.dismiss_motion ? sumCfg.dismiss_motion.join(", ") : ""),
-        dismiss_nfc_tags: Array.isArray(rawCfg.dismiss_nfc_tags)
-          ? rawCfg.dismiss_nfc_tags.join(", ")
-          : (sumCfg.dismiss_nfc ? sumCfg.dismiss_nfc.join(", ") : ""),
-        dismiss_power_sensor: rawCfg.dismiss_power_sensor ?? sumCfg.dismiss_power ?? "",
-        dismiss_power_threshold: rawCfg.dismiss_power_threshold ?? 10.0,
-      };
-    } else {
-      this._editConfig = {
-        name: "Neuer Wecker",
-        time: "06:30",
-        enabled: true,
-        days: ["mon", "tue", "wed", "thu", "fri"],
-
-        workday_only: false,
-        workday_entity: "binary_sensor.workday_sensor",
-        person_home_required: false,
-        person_entities: "",
-        calendar_entity: "",
-        calendar_behavior: "none",
-        weather_temp_entity: "",
-        weather_temp_threshold: 0.0,
-        weather_temp_offset: 15,
-        weather_rain_entity: "",
-        weather_rain_offset: 10,
-        sleep_stage_entity: "",
-        sleep_stage_window: 30,
-
-        pre_alarm_enabled: true,
-        pre_alarm_duration: 15,
-        pre_alarm_light_entities: "",
-        pre_alarm_light_start_brightness: 1,
-        pre_alarm_light_end_brightness: 80,
-        pre_alarm_cover_entities: "",
-        pre_alarm_cover_position: 20,
-        pre_alarm_script_entity: "",
-
-        main_media_player_entities: "",
-        main_audio_content_id: "",
-        main_audio_content_type: "music",
-        main_audio_fade_in: true,
-        main_audio_fade_duration: 30,
-        main_audio_target_volume: 50,
-        main_tts_enabled: false,
-        main_tts_message: "Guten Morgen! Es ist {time} Uhr, draußen sind es {temp}°C.",
-        main_tts_engine: "",
-        main_script_entity: "",
-
-        escalation_enabled: true,
-        escalation_delay: 10,
-        escalation_volume: 90,
-        escalation_volume_fade_duration: 30,
-        escalation_light_entities: "",
-        escalation_light_brightness: 100,
-        escalation_light_cold_white: true,
-        escalation_cover_entities: "",
-        escalation_cover_position: 100,
-        escalation_script_entity: "",
-
-        snooze_duration: 8,
-        max_snooze_count: 2,
-        snooze_button_entity: "",
-        dismiss_button_entity: "",
-        dismiss_motion_entities: "",
-        dismiss_nfc_tags: "",
-        dismiss_power_sensor: "",
-        dismiss_power_threshold: 10.0,
-      };
-    }
-    this._render();
-  }
-
-  _closeSettingsModal() {
-    this._editingAlarmId = null;
-    this._editConfig = null;
-    this._saving = false;
-    this._render();
-  }
-
-  _collectFormValues() {
-    if (!this._editConfig || !this.shadowRoot) return;
-    const root = this.shadowRoot;
-
-    const getVal = (id) => {
-      const el = root.getElementById(id);
-      return el !== null ? el.value : undefined;
-    };
-    const getChecked = (id) => {
-      const el = root.getElementById(id);
-      return el !== null ? el.checked : undefined;
-    };
-
-    // General Tab
-    if (getVal("f_name") !== undefined) this._editConfig.name = getVal("f_name");
-    if (getVal("f_time") !== undefined) this._editConfig.time = getVal("f_time");
-    if (getChecked("f_enabled") !== undefined) this._editConfig.enabled = getChecked("f_enabled");
-
-    // Conditions Tab
-    if (getChecked("f_workday_only") !== undefined) this._editConfig.workday_only = getChecked("f_workday_only");
-    if (getVal("f_workday_entity") !== undefined) this._editConfig.workday_entity = getVal("f_workday_entity");
-    if (getChecked("f_person_home_required") !== undefined) this._editConfig.person_home_required = getChecked("f_person_home_required");
-    if (getVal("f_person_entities") !== undefined) this._editConfig.person_entities = getVal("f_person_entities");
-    if (getVal("f_calendar_entity") !== undefined) this._editConfig.calendar_entity = getVal("f_calendar_entity");
-    if (getVal("f_calendar_behavior") !== undefined) this._editConfig.calendar_behavior = getVal("f_calendar_behavior");
-    if (getVal("f_weather_temp_entity") !== undefined) this._editConfig.weather_temp_entity = getVal("f_weather_temp_entity");
-    if (getVal("f_weather_temp_threshold") !== undefined) this._editConfig.weather_temp_threshold = getVal("f_weather_temp_threshold");
-    if (getVal("f_weather_temp_offset") !== undefined) this._editConfig.weather_temp_offset = getVal("f_weather_temp_offset");
-    if (getVal("f_weather_rain_entity") !== undefined) this._editConfig.weather_rain_entity = getVal("f_weather_rain_entity");
-    if (getVal("f_weather_rain_offset") !== undefined) this._editConfig.weather_rain_offset = getVal("f_weather_rain_offset");
-    if (getVal("f_sleep_stage_entity") !== undefined) this._editConfig.sleep_stage_entity = getVal("f_sleep_stage_entity");
-    if (getVal("f_sleep_stage_window") !== undefined) this._editConfig.sleep_stage_window = getVal("f_sleep_stage_window");
-
-    // Phase 1 Tab
-    if (getChecked("f_pre_alarm_enabled") !== undefined) this._editConfig.pre_alarm_enabled = getChecked("f_pre_alarm_enabled");
-    if (getVal("f_pre_alarm_duration") !== undefined) this._editConfig.pre_alarm_duration = getVal("f_pre_alarm_duration");
-    if (getVal("f_pre_alarm_light_entities") !== undefined) this._editConfig.pre_alarm_light_entities = getVal("f_pre_alarm_light_entities");
-    if (getVal("f_pre_alarm_light_start_brightness") !== undefined) this._editConfig.pre_alarm_light_start_brightness = getVal("f_pre_alarm_light_start_brightness");
-    if (getVal("f_pre_alarm_light_end_brightness") !== undefined) this._editConfig.pre_alarm_light_end_brightness = getVal("f_pre_alarm_light_end_brightness");
-    if (getVal("f_pre_alarm_cover_entities") !== undefined) this._editConfig.pre_alarm_cover_entities = getVal("f_pre_alarm_cover_entities");
-    if (getVal("f_pre_alarm_cover_position") !== undefined) this._editConfig.pre_alarm_cover_position = getVal("f_pre_alarm_cover_position");
-    if (getVal("f_pre_alarm_script_entity") !== undefined) this._editConfig.pre_alarm_script_entity = getVal("f_pre_alarm_script_entity");
-
-    // Phase 2 Tab
-    if (getVal("f_main_media_player_entities") !== undefined) this._editConfig.main_media_player_entities = getVal("f_main_media_player_entities");
-    if (getVal("f_main_audio_content_id") !== undefined) this._editConfig.main_audio_content_id = getVal("f_main_audio_content_id");
-    if (getVal("f_main_audio_content_type") !== undefined) this._editConfig.main_audio_content_type = getVal("f_main_audio_content_type");
-    if (getChecked("f_main_audio_fade_in") !== undefined) this._editConfig.main_audio_fade_in = getChecked("f_main_audio_fade_in");
-    if (getVal("f_main_audio_fade_duration") !== undefined) this._editConfig.main_audio_fade_duration = getVal("f_main_audio_fade_duration");
-    if (getVal("f_main_audio_target_volume") !== undefined) this._editConfig.main_audio_target_volume = getVal("f_main_audio_target_volume");
-    if (getChecked("f_main_tts_enabled") !== undefined) this._editConfig.main_tts_enabled = getChecked("f_main_tts_enabled");
-    if (getVal("f_main_tts_message") !== undefined) this._editConfig.main_tts_message = getVal("f_main_tts_message");
-    if (getVal("f_main_tts_engine") !== undefined) this._editConfig.main_tts_engine = getVal("f_main_tts_engine");
-    if (getVal("f_main_script_entity") !== undefined) this._editConfig.main_script_entity = getVal("f_main_script_entity");
-
-    // Phase 3 Tab
-    if (getChecked("f_escalation_enabled") !== undefined) this._editConfig.escalation_enabled = getChecked("f_escalation_enabled");
-    if (getVal("f_escalation_delay") !== undefined) this._editConfig.escalation_delay = getVal("f_escalation_delay");
-    if (getVal("f_escalation_volume") !== undefined) this._editConfig.escalation_volume = getVal("f_escalation_volume");
-    if (getVal("f_escalation_volume_fade_duration") !== undefined) this._editConfig.escalation_volume_fade_duration = getVal("f_escalation_volume_fade_duration");
-    if (getChecked("f_escalation_light_cold_white") !== undefined) this._editConfig.escalation_light_cold_white = getChecked("f_escalation_light_cold_white");
-    if (getVal("f_escalation_light_entities") !== undefined) this._editConfig.escalation_light_entities = getVal("f_escalation_light_entities");
-    if (getVal("f_escalation_cover_position") !== undefined) this._editConfig.escalation_cover_position = getVal("f_escalation_cover_position");
-    if (getVal("f_escalation_cover_entities") !== undefined) this._editConfig.escalation_cover_entities = getVal("f_escalation_cover_entities");
-    if (getVal("f_escalation_script_entity") !== undefined) this._editConfig.escalation_script_entity = getVal("f_escalation_script_entity");
-
-    // Snooze & Anti-Cheat Tab
-    if (getVal("f_snooze_duration") !== undefined) this._editConfig.snooze_duration = getVal("f_snooze_duration");
-    if (getVal("f_max_snooze_count") !== undefined) this._editConfig.max_snooze_count = getVal("f_max_snooze_count");
-    if (getVal("f_snooze_button_entity") !== undefined) this._editConfig.snooze_button_entity = getVal("f_snooze_button_entity");
-    if (getVal("f_dismiss_button_entity") !== undefined) this._editConfig.dismiss_button_entity = getVal("f_dismiss_button_entity");
-    if (getVal("f_dismiss_motion_entities") !== undefined) this._editConfig.dismiss_motion_entities = getVal("f_dismiss_motion_entities");
-    if (getVal("f_dismiss_nfc_tags") !== undefined) this._editConfig.dismiss_nfc_tags = getVal("f_dismiss_nfc_tags");
-    if (getVal("f_dismiss_power_sensor") !== undefined) this._editConfig.dismiss_power_sensor = getVal("f_dismiss_power_sensor");
-    if (getVal("f_dismiss_power_threshold") !== undefined) this._editConfig.dismiss_power_threshold = getVal("f_dismiss_power_threshold");
-  }
-
-  async _saveSettings() {
-    if (!this._hass || !this._editConfig) return;
-    this._collectFormValues();
-    this._saving = true;
-    this._render();
-
-    try {
-      const toList = (val) => {
-        if (!val) return [];
-        if (Array.isArray(val)) return val;
-        return val.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
-      };
-
-      const payloadConfig = {
-        name: this._editConfig.name,
-        time: this._editConfig.time,
-        enabled: Boolean(this._editConfig.enabled),
-        days: this._editConfig.days,
-
-        workday_only: Boolean(this._editConfig.workday_only),
-        workday_entity: this._editConfig.workday_entity || null,
-        person_home_required: Boolean(this._editConfig.person_home_required),
-        person_entities: toList(this._editConfig.person_entities),
-        calendar_entity: this._editConfig.calendar_entity || null,
-        calendar_behavior: this._editConfig.calendar_behavior || "none",
-        weather_temp_entity: this._editConfig.weather_temp_entity || null,
-        weather_temp_threshold: parseFloat(this._editConfig.weather_temp_threshold) || 0.0,
-        weather_temp_offset: parseInt(this._editConfig.weather_temp_offset, 10) || 15,
-        weather_rain_entity: this._editConfig.weather_rain_entity || null,
-        weather_rain_offset: parseInt(this._editConfig.weather_rain_offset, 10) || 10,
-        sleep_stage_entity: this._editConfig.sleep_stage_entity || null,
-        sleep_stage_window: parseInt(this._editConfig.sleep_stage_window, 10) || 30,
-
-        pre_alarm_enabled: Boolean(this._editConfig.pre_alarm_enabled),
-        pre_alarm_duration: parseInt(this._editConfig.pre_alarm_duration, 10) || 15,
-        pre_alarm_light_entities: toList(this._editConfig.pre_alarm_light_entities),
-        pre_alarm_light_start_brightness: parseInt(this._editConfig.pre_alarm_light_start_brightness, 10) || 1,
-        pre_alarm_light_end_brightness: parseInt(this._editConfig.pre_alarm_light_end_brightness, 10) || 80,
-        pre_alarm_cover_entities: toList(this._editConfig.pre_alarm_cover_entities),
-        pre_alarm_cover_position: parseInt(this._editConfig.pre_alarm_cover_position, 10) || 20,
-        pre_alarm_script_entity: this._editConfig.pre_alarm_script_entity || null,
-
-        main_media_player_entities: toList(this._editConfig.main_media_player_entities),
-        main_audio_content_id: this._editConfig.main_audio_content_id || null,
-        main_audio_content_type: this._editConfig.main_audio_content_type || "music",
-        main_audio_fade_in: Boolean(this._editConfig.main_audio_fade_in),
-        main_audio_fade_duration: parseInt(this._editConfig.main_audio_fade_duration, 10) || 30,
-        main_audio_target_volume: (parseInt(this._editConfig.main_audio_target_volume, 10) || 50) / 100,
-        main_tts_enabled: Boolean(this._editConfig.main_tts_enabled),
-        main_tts_message: this._editConfig.main_tts_message || "",
-        main_tts_engine: this._editConfig.main_tts_engine || null,
-        main_script_entity: this._editConfig.main_script_entity || null,
-
-        escalation_enabled: Boolean(this._editConfig.escalation_enabled),
-        escalation_delay: parseInt(this._editConfig.escalation_delay, 10) || 10,
-        escalation_volume: (parseInt(this._editConfig.escalation_volume, 10) || 90) / 100,
-        escalation_volume_fade_duration: parseInt(this._editConfig.escalation_volume_fade_duration, 10) ?? 30,
-        escalation_light_entities: toList(this._editConfig.escalation_light_entities),
-        escalation_light_brightness: parseInt(this._editConfig.escalation_light_brightness, 10) || 100,
-        escalation_light_cold_white: Boolean(this._editConfig.escalation_light_cold_white),
-        escalation_cover_entities: toList(this._editConfig.escalation_cover_entities),
-        escalation_cover_position: parseInt(this._editConfig.escalation_cover_position, 10) || 100,
-        escalation_script_entity: this._editConfig.escalation_script_entity || null,
-
-        snooze_duration: parseInt(this._editConfig.snooze_duration, 10) || 8,
-        max_snooze_count: parseInt(this._editConfig.max_snooze_count, 10) || 2,
-        snooze_button_entity: this._editConfig.snooze_button_entity || null,
-        dismiss_button_entity: this._editConfig.dismiss_button_entity || null,
-        dismiss_motion_entities: toList(this._editConfig.dismiss_motion_entities),
-        dismiss_nfc_tags: toList(this._editConfig.dismiss_nfc_tags),
-        dismiss_power_sensor: this._editConfig.dismiss_power_sensor || null,
-        dismiss_power_threshold: parseFloat(this._editConfig.dismiss_power_threshold) || 10.0,
-      };
-
-      if (this._editingAlarmId === "__new__") {
-        await this._hass.callWS({
-          type: "smart_wake/create_alarm",
-          name: this._editConfig.name,
-          time: this._editConfig.time,
-          days: this._editConfig.days,
-          enabled: this._editConfig.enabled,
-          config: payloadConfig,
-        });
-      } else {
-        await this._hass.callWS({
-          type: "smart_wake/update_config",
-          alarm_id: this._editingAlarmId,
-          config: payloadConfig,
-        });
-      }
-
-      this._closeSettingsModal();
-      await this._fetchAlarms();
-    } catch (err) {
-      console.error("Failed to save alarm settings:", err);
-      alert("Fehler beim Speichern: " + (err.message || err));
-      this._saving = false;
-      this._render();
-    }
-  }
-
-  async _deleteAlarm(alarmId) {
-    if (!this._hass) return;
-    if (!confirm("Möchtest du diesen Smart Wake Wecker wirklich löschen?")) return;
-    try {
-      await this._hass.callWS({
-        type: "smart_wake/delete_alarm",
-        alarm_id: alarmId,
-      });
-      this._closeSettingsModal();
-      await this._fetchAlarms();
-    } catch (err) {
-      console.error("Failed to delete alarm:", err);
-      alert("Fehler beim Löschen: " + (err.message || err));
-    }
-  }
-
-  _formatTime(isoStr) {
-    if (!isoStr) return "--:--";
-    try {
-      const d = new Date(isoStr);
-      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    } catch {
-      return "--:--";
-    }
-  }
-
-  _getStatusBadge(status, phase, isFullTest = false) {
-    let color = "#78909c";
-    let text = status.toUpperCase();
-    let pulse = false;
-
-    if (isFullTest) {
-      if (status === "ringing") {
-        color = "#e53935";
-        text = phase === "escalation" ? "🔔 TEST: ESKALATION!" : "🔔 TEST: KLINGELT";
-        pulse = true;
-      } else if (status === "pre_alarm") {
-        color = "#fb8c00";
-        text = "🌅 TEST: PRE-ALARM";
-        pulse = true;
-      } else if (status === "snoozed") {
-        color = "#8e24aa";
-        text = "💤 TEST: SCHLUMMERT";
-        pulse = true;
-      } else {
-        color = "#e53935";
-        text = "🔔 TESTLAUF AKTIV";
-        pulse = true;
-      }
-    } else {
-      switch (status) {
-        case "ringing":
-          color = "#e53935";
-          text = phase === "escalation" ? "🔔 ESKALATION!" : "🔔 KLINGELT";
-          pulse = true;
-          break;
-        case "pre_alarm":
-          color = "#fb8c00";
-          text = "🌅 PRE-ALARM";
-          pulse = true;
-          break;
-        case "snoozed":
-          color = "#8e24aa";
-          text = "💤 SCHLUMMERT";
-          break;
-        case "skipped":
-          color = "#546e7a";
-          text = "⏭️ ÜBERSPRUNGEN";
-          break;
-        case "dismissed":
-          color = "#43a047";
-          text = "✅ QUITTIERT";
-          break;
-        case "idle":
-          color = "#2e7d32";
-          text = "AKTIV (IDLE)";
-          break;
-      }
-    }
-
-    return `<span class="badge ${pulse ? "pulse" : ""}" style="background-color: ${color};">${text}</span>`;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Entity Autocomplete & Live Preview Helpers
-  // ---------------------------------------------------------------------------
-  _getEntityDomainIcon(entityId, attributes = {}) {
-    if (!entityId) return "🔹";
-    const domain = entityId.split(".")[0];
-    switch (domain) {
-      case "light":
-        return "💡";
-      case "switch":
-        return "🔌";
-      case "person":
-        return "👤";
-      case "media_player":
-        return "🔊";
-      case "climate":
-        return "🌡️";
-      case "cover":
-        return "🪟";
-      case "calendar":
-        return "📅";
-      case "binary_sensor": {
-        const dc = attributes.device_class;
-        if (dc === "motion" || dc === "occupancy" || dc === "presence") return "🏃";
-        if (dc === "door" || dc === "window" || dc === "opening") return "🚪";
-        if (dc === "moisture") return "💧";
-        if (dc === "sound") return "🔊";
-        if (dc === "vibration") return "📳";
-        return "🔘";
-      }
-      case "sensor": {
-        const dc = attributes.device_class;
-        if (dc === "temperature") return "🌡️";
-        if (dc === "power" || dc === "energy") return "⚡";
-        if (dc === "battery") return "🔋";
-        if (dc === "humidity") return "💧";
-        if (dc === "illuminance") return "☀️";
-        return "📊";
-      }
-      case "script":
-        return "📜";
-      case "button":
-        return "🔘";
-      case "event":
-        return "⚡";
-      case "tts":
-        return "🗣️";
-      case "weather":
-        return "⛅";
-      case "automation":
-        return "⚙️";
-      default:
-        return "🔹";
-    }
-  }
-
-  _formatEntityState(stateObj) {
-    if (!stateObj) return "";
-    let val = stateObj.state;
-    const unit = stateObj.attributes?.unit_of_measurement;
-    if (val === "on") val = "an";
-    else if (val === "off") val = "aus";
-    else if (val === "home") val = "zuhause";
-    else if (val === "not_home") val = "abwesend";
-    else if (val === "unavailable") val = "nicht verfügbar";
-    else if (val === "unknown") val = "unbekannt";
-    else if (val === "playing") val = "spielt";
-    else if (val === "paused") val = "pausiert";
-    else if (val === "idle") val = "standby";
-
-    if (unit) return `${val} ${unit}`;
-    return val;
-  }
-
-  _searchEntities(query = "", domainsStr = "") {
-    if (!this._hass || !this._hass.states) return [];
-    const allowedDomains = domainsStr
-      ? domainsStr.split(",").map((d) => d.trim().toLowerCase()).filter(Boolean)
-      : [];
-    const q = (query || "").trim().toLowerCase();
-
-    const allStates = Object.values(this._hass.states);
-    const results = [];
-
-    for (const s of allStates) {
-      const eid = s.entity_id.toLowerCase();
-      const domain = eid.split(".")[0];
-      const fname = (s.attributes?.friendly_name || "").toLowerCase();
-
-      const inDomain = allowedDomains.length === 0 || allowedDomains.includes(domain);
-
-      let score = 0;
-      if (!q) {
-        if (!inDomain) continue;
-        score = 1;
-      } else {
-        if (eid === q) score = 100;
-        else if (fname === q) score = 90;
-        else if (eid.startsWith(q)) score = 80;
-        else if (fname.startsWith(q)) score = 70;
-        else if (eid.includes(q)) score = 60;
-        else if (fname.includes(q)) score = 50;
-        else continue;
-
-        if (inDomain) score += 25;
-      }
-
-      results.push({
-        state: s,
-        score,
-        name: s.attributes?.friendly_name || s.entity_id,
-      });
-    }
-
-    results.sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return a.name.localeCompare(b.name);
-    });
-
-    return results.slice(0, 10).map((r) => r.state);
-  }
-
-  _renderEntityField(id, label, value, placeholder, hint, domain, isMultiple = false) {
-    return `
-      <div class="form-group">
-        <label class="form-label" for="${id}">${label}</label>
-        <div class="entity-input-wrapper">
-          <input
-            class="form-input entity-autocomplete-input"
-            id="${id}"
-            type="text"
-            value="${value || ""}"
-            placeholder="${placeholder || ""}"
-            data-domain="${domain || ""}"
-            data-multiple="${isMultiple ? "true" : "false"}"
-            autocomplete="off"
-            spellcheck="false"
-          />
-          <div class="entity-autocomplete-dropdown" id="dropdown-${id}" style="display: none;"></div>
-        </div>
-        <div class="entity-preview-chips" id="preview-${id}"></div>
-        ${hint ? `<span class="form-hint">${hint}</span>` : ""}
-      </div>
-    `;
-  }
-
-  _updatePreviewChips(input, chipsContainer) {
-    if (!input || !chipsContainer) return;
-    const rawVal = input.value || "";
-    const isMultiple = input.getAttribute("data-multiple") === "true";
-    const parts = rawVal
-      .split(",")
-      .map((p) => p.trim())
-      .filter(Boolean);
-
-    if (parts.length === 0) {
-      if (chipsContainer.children.length > 0) {
-        chipsContainer.innerHTML = "";
-      }
-      return;
-    }
-
-    // Check if same entities are already rendered to avoid rebuilding DOM & flickering
-    const existingChips = Array.from(chipsContainer.querySelectorAll(".entity-chip"));
-    const existingIds = existingChips.map((c) => c.getAttribute("data-entity-id"));
-    const sameList =
-      existingIds.length === parts.length &&
-      existingIds.every((id, idx) => id === parts[idx]);
-
-    if (sameList) {
-      // Update text and verification state in-place without touching DOM tree or listeners
-      parts.forEach((entId, idx) => {
-        const chip = existingChips[idx];
-        const stateObj = this._hass && this._hass.states ? this._hass.states[entId] : null;
-        const stateSpan = chip.querySelector(".entity-chip-state");
-        if (stateObj) {
-          const newState = this._formatEntityState(stateObj);
-          if (stateSpan && stateSpan.textContent !== newState) {
-            stateSpan.textContent = newState;
-          }
-          if (chip.classList.contains("unverified")) {
-            chip.classList.remove("unverified");
-            const iconSpan = chip.querySelector(".entity-chip-icon");
-            if (iconSpan) iconSpan.textContent = this._getEntityDomainIcon(entId, stateObj.attributes);
-            const nameSpan = chip.querySelector(".entity-chip-name");
-            if (nameSpan) nameSpan.textContent = stateObj.attributes?.friendly_name || entId;
-          }
-        } else {
-          if (!chip.classList.contains("unverified")) {
-            chip.classList.add("unverified");
-            const iconSpan = chip.querySelector(".entity-chip-icon");
-            if (iconSpan) iconSpan.textContent = "⚠️";
-          }
-          if (stateSpan && stateSpan.textContent !== "Nicht in HA gefunden") {
-            stateSpan.textContent = "Nicht in HA gefunden";
-          }
-        }
-      });
-      return;
-    }
-
-    const html = parts.map((entId) => {
-      const stateObj = this._hass && this._hass.states ? this._hass.states[entId] : null;
-      if (stateObj) {
-        const icon = this._getEntityDomainIcon(entId, stateObj.attributes);
-        const name = stateObj.attributes?.friendly_name || entId;
-        const stateStr = this._formatEntityState(stateObj);
-        return `
-          <div class="entity-chip" data-entity-id="${entId}" title="${entId}">
-            <span class="entity-chip-icon">${icon}</span>
-            <span class="entity-chip-name">${name}</span>
-            <span class="entity-chip-state">${stateStr}</span>
-            <button type="button" class="entity-chip-remove" data-remove="${entId}" title="${entId} entfernen">&times;</button>
-          </div>
-        `;
-      } else {
-        return `
-          <div class="entity-chip unverified" data-entity-id="${entId}" title="Nicht in Home Assistant gefunden">
-            <span class="entity-chip-icon">⚠️</span>
-            <span class="entity-chip-name">${entId}</span>
-            <span class="entity-chip-state">Nicht in HA gefunden</span>
-            <button type="button" class="entity-chip-remove" data-remove="${entId}" title="${entId} entfernen">&times;</button>
-          </div>
-        `;
-      }
-    }).join("");
-
-    chipsContainer.innerHTML = html;
-
-    chipsContainer.querySelectorAll(".entity-chip-remove").forEach((btn) => {
-      btn.onclick = (e) => {
-        e.stopPropagation();
-        const toRemove = btn.getAttribute("data-remove");
-        if (!toRemove) return;
-
-        if (isMultiple) {
-          const currentList = input.value
-            .split(",")
-            .map((p) => p.trim())
-            .filter((p) => p && p !== toRemove);
-          input.value = currentList.join(", ");
-        } else {
-          input.value = "";
-        }
-
-        this._updatePreviewChips(input, chipsContainer);
-        this._collectFormValues();
-      };
-    });
-  }
-
-  _refreshAllPreviewChips() {
-    if (!this.shadowRoot) return;
-    this.shadowRoot.querySelectorAll(".entity-autocomplete-input").forEach((input) => {
-      const preview = this.shadowRoot.getElementById(`preview-${input.id}`);
-      if (preview) {
-        this._updatePreviewChips(input, preview);
-      }
-    });
-  }
-
-  _initEntityAutocompletes() {
-    const root = this.shadowRoot;
-    if (!root) return;
-
-    const inputs = root.querySelectorAll(".entity-autocomplete-input");
-    inputs.forEach((input) => {
-      const id = input.id;
-      const dropdown = root.getElementById(`dropdown-${id}`);
-      const preview = root.getElementById(`preview-${id}`);
-      const domain = input.getAttribute("data-domain") || "";
-      const isMulti = input.getAttribute("data-multiple") === "true";
-
-      if (!dropdown || !preview) return;
-
-      this._updatePreviewChips(input, preview);
-
-      let currentResults = [];
-      let activeIdx = -1;
-
-      const getActiveToken = () => {
-        if (!isMulti) return input.value.trim();
-        const pos = input.selectionStart ?? input.value.length;
-        const textBefore = input.value.slice(0, pos);
-        const lastComma = textBefore.lastIndexOf(",");
-        return (lastComma >= 0 ? textBefore.slice(lastComma + 1) : textBefore).trim();
-      };
-
-      const selectEntity = (eid) => {
-        if (!isMulti) {
-          input.value = eid;
-        } else {
-          const pos = input.selectionStart ?? input.value.length;
-          const textBefore = input.value.slice(0, pos);
-          const textAfter = input.value.slice(pos);
-          const lastComma = textBefore.lastIndexOf(",");
-          const prefix = lastComma >= 0 ? textBefore.slice(0, lastComma + 1) + " " : "";
-          input.value = (prefix + eid + ", " + textAfter.replace(/^[\s,]+/, "")).trim();
-        }
-        dropdown.style.display = "none";
-        activeIdx = -1;
-        this._updatePreviewChips(input, preview);
-        this._collectFormValues();
-        input.focus();
-      };
-
-      const renderDropdown = () => {
-        if (currentResults.length === 0) {
-          dropdown.innerHTML = `<div class="autocomplete-no-results">Keine passenden Entities gefunden</div>`;
-        } else {
-          dropdown.innerHTML = currentResults.map((s, idx) => {
-            const icon = this._getEntityDomainIcon(s.entity_id, s.attributes);
-            const name = s.attributes?.friendly_name || s.entity_id;
-            const stateStr = this._formatEntityState(s);
-            return `
-              <div class="autocomplete-item ${idx === activeIdx ? "highlighted" : ""}" data-index="${idx}" data-eid="${s.entity_id}">
-                <div class="autocomplete-item-left">
-                  <span class="autocomplete-item-icon">${icon}</span>
-                  <div class="autocomplete-item-info">
-                    <span class="autocomplete-item-name">${name}</span>
-                    <span class="autocomplete-item-id">${s.entity_id}</span>
-                  </div>
-                </div>
-                <div class="autocomplete-item-right">
-                  <span class="autocomplete-item-state">${stateStr}</span>
-                </div>
-              </div>
-            `;
-          }).join("");
-
-          dropdown.querySelectorAll(".autocomplete-item").forEach((item) => {
-            item.onmousedown = (e) => {
-              e.preventDefault();
-              const eid = item.getAttribute("data-eid");
-              if (eid) selectEntity(eid);
-            };
-          });
-        }
-        dropdown.style.display = "block";
-      };
-
-      const openAutocomplete = () => {
-        root.querySelectorAll(".entity-autocomplete-dropdown").forEach((dd) => {
-          if (dd !== dropdown) dd.style.display = "none";
-        });
-        const query = getActiveToken();
-        currentResults = this._searchEntities(query, domain);
-        activeIdx = -1;
-        renderDropdown();
-      };
-
-      input.onfocus = () => {
-        openAutocomplete();
-      };
-
-      input.oninput = () => {
-        openAutocomplete();
-        this._updatePreviewChips(input, preview);
-        this._collectFormValues();
-      };
-
-      input.onkeydown = (e) => {
-        if (dropdown.style.display === "none") {
-          if (e.key === "ArrowDown") {
-            openAutocomplete();
-            e.preventDefault();
-          }
-          return;
-        }
-
-        if (e.key === "ArrowDown") {
-          e.preventDefault();
-          if (currentResults.length > 0) {
-            activeIdx = (activeIdx + 1) % currentResults.length;
-            renderDropdown();
-            const highlighted = dropdown.querySelector(".autocomplete-item.highlighted");
-            if (highlighted) highlighted.scrollIntoView({ block: "nearest" });
-          }
-        } else if (e.key === "ArrowUp") {
-          e.preventDefault();
-          if (currentResults.length > 0) {
-            activeIdx = (activeIdx - 1 + currentResults.length) % currentResults.length;
-            renderDropdown();
-            const highlighted = dropdown.querySelector(".autocomplete-item.highlighted");
-            if (highlighted) highlighted.scrollIntoView({ block: "nearest" });
-          }
-        } else if (e.key === "Enter") {
-          if (activeIdx >= 0 && currentResults[activeIdx]) {
-            e.preventDefault();
-            selectEntity(currentResults[activeIdx].entity_id);
-          }
-        } else if (e.key === "Escape") {
-          dropdown.style.display = "none";
-          activeIdx = -1;
-        }
-      };
-
-      input.onblur = () => {
-        setTimeout(() => {
-          dropdown.style.display = "none";
-        }, 150);
-      };
-    });
-  }
-
-  _render() {
-    if (!this.shadowRoot) return;
-
-    this.shadowRoot.innerHTML = `
-      <style>
+const PANEL_STYLES = `
         :host {
           display: block;
           font-family: var(--ha-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
@@ -2147,8 +1041,1275 @@ class SmartWakePanel extends HTMLElement {
           text-align: center;
           font-style: italic;
         }
-      </style>
+`;
 
+class SmartWakePanel extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" });
+    this._hass = null;
+    this._alarms = [];
+    this._loading = true;
+    this._testInterval = null;
+    this._timer = null;
+    this._toastTimeout = null;
+
+    // Modal state for in-panel settings
+    this._editingAlarmId = null; // null = closed, "__new__" = creating new, or alarmId
+    this._editConfig = null;
+    this._activeTab = "general";
+    this._saving = false;
+
+    // Test selection modal state
+    this._testModalAlarmId = null;
+
+    // Permanent shadow DOM flags & RAF debounce
+    this._shadowInitialized = false;
+    this._dashboardRendered = false;
+    this._chipRaf = null;
+  }
+
+  _ensureShadowStructure() {
+    if (this._shadowInitialized) return;
+    this._shadowInitialized = true;
+
+    const styleEl = document.createElement("style");
+    styleEl.textContent = PANEL_STYLES;
+
+    const appEl = document.createElement("div");
+    appEl.id = "panelApp";
+    appEl.className = "smart-wake-app";
+
+    const modalHostEl = document.createElement("div");
+    modalHostEl.id = "modalHost";
+
+    const toastEl = document.createElement("div");
+    toastEl.id = "smartWakeToast";
+    toastEl.className = "sw-toast";
+
+    this.shadowRoot.appendChild(styleEl);
+    this.shadowRoot.appendChild(appEl);
+    this.shadowRoot.appendChild(modalHostEl);
+    this.shadowRoot.appendChild(toastEl);
+  }
+
+  set hass(hass) {
+    const oldHass = this._hass;
+    this._hass = hass;
+    if (!oldHass) {
+      this._fetchAlarms();
+      this._subscribeUpdates();
+    }
+    if (this._editingAlarmId) {
+      this._scheduleChipRefresh();
+    }
+  }
+
+  _scheduleChipRefresh() {
+    if (this._chipRaf) return;
+    this._chipRaf = requestAnimationFrame(() => {
+      this._chipRaf = null;
+      this._refreshAllPreviewChips();
+    });
+  }
+
+  connectedCallback() {
+    this._ensureShadowStructure();
+    this._renderDashboard();
+    if (this._hass) {
+      this._fetchAlarms();
+    }
+    if (this._timer) clearInterval(this._timer);
+    this._timer = setInterval(() => {
+      this._updateLiveElements();
+    }, 5000);
+  }
+
+  disconnectedCallback() {
+    if (this._timer) clearInterval(this._timer);
+    if (this._testInterval) clearInterval(this._testInterval);
+    if (this._chipRaf) cancelAnimationFrame(this._chipRaf);
+    if (this._unsubEvents) {
+      this._unsubEvents();
+      this._unsubEvents = null;
+    }
+  }
+
+  async _fetchAlarms() {
+    if (!this._hass) return;
+    try {
+      const res = await this._hass.callWS({ type: "smart_wake/get_alarms" });
+      this._loading = false;
+      this._updateAlarmsData(res.alarms || []);
+    } catch (err) {
+      console.error("Failed to fetch Smart Wake alarms:", err);
+      this._loading = false;
+      this._renderDashboard();
+    }
+  }
+
+  _updateAlarmsData(newAlarms) {
+    const oldAlarms = this._alarms || [];
+    this._alarms = newAlarms;
+
+    const oldSig = oldAlarms
+      .map((a) => `${a.id}:${a.enabled}:${a.status}:${a.active_phase}:${a.is_testing}:${a.is_full_test}:${a.is_dry_run}:${a.snooze_count}`)
+      .join("|");
+    const newSig = newAlarms
+      .map((a) => `${a.id}:${a.enabled}:${a.status}:${a.active_phase}:${a.is_testing}:${a.is_full_test}:${a.is_dry_run}:${a.snooze_count}`)
+      .join("|");
+
+    if (oldSig !== newSig || !this._dashboardRendered) {
+      this._renderDashboard();
+    } else {
+      this._updateLiveElements();
+    }
+  }
+
+  _updateLiveElements() {
+    if (!this.shadowRoot) return;
+    this._updateCountdowns();
+    this._alarms.forEach((alarm) => {
+      if (alarm.is_dry_run) {
+        const textEl = this.shadowRoot.getElementById(`dryrun-text-${alarm.id}`);
+        const barEl = this.shadowRoot.getElementById(`dryrun-bar-${alarm.id}`);
+        const phaseEl = this.shadowRoot.getElementById(`dryrun-phase-${alarm.id}`);
+        const pct = Math.min(100, (((alarm.dry_run_progress ?? 0) / 30) * 100));
+        if (textEl) textEl.textContent = `⏱️ Testlauf Zeitraffer: ${alarm.dry_run_progress ?? 0}s / 30s`;
+        if (barEl) barEl.style.width = `${pct}%`;
+        if (phaseEl) phaseEl.textContent = (alarm.active_phase || "").toUpperCase();
+      }
+    });
+  }
+
+  _updateCountdowns() {
+    if (!this.shadowRoot) return;
+    const now = new Date();
+    this._alarms.forEach((alarm) => {
+      const chip = this.shadowRoot.getElementById(`countdown-${alarm.id}`);
+      if (!chip) return;
+
+      let text = "Deaktiviert";
+      if (!alarm.enabled) {
+        text = "Deaktiviert";
+      } else if (alarm.status === "snoozed" && alarm.snooze_until) {
+        const snoozeDate = new Date(alarm.snooze_until);
+        const diffSecs = Math.max(0, Math.floor((snoozeDate - now) / 1000));
+        const mins = Math.floor(diffSecs / 60);
+        const secs = diffSecs % 60;
+        text = mins > 0 ? `Schlummert (noch ${mins}m ${secs}s)` : `Schlummert (noch ${secs}s)`;
+      } else if (alarm.next_alarm) {
+        const nextDate = new Date(alarm.next_alarm);
+        const diffSecs = Math.max(0, Math.floor((nextDate - now) / 1000));
+        text = this._formatCountdown(diffSecs);
+      } else if (alarm.countdown_text) {
+        text = alarm.countdown_text;
+      }
+
+      const formatted = `⏳ ${text}`;
+      if (chip.textContent.trim() !== formatted) {
+        chip.textContent = formatted;
+      }
+    });
+  }
+
+  _formatCountdown(totalSecs) {
+    if (totalSecs <= 0) return "Jetzt fällig";
+    const hours = Math.floor(totalSecs / 3600);
+    const mins = Math.floor((totalSecs % 3600) / 60);
+    const parts = [];
+    if (hours > 0) parts.push(`${hours} Std.`);
+    if (mins > 0 || hours === 0) parts.push(`${mins} Min.`);
+    return "in " + parts.join(" ");
+  }
+  async _subscribeUpdates() {
+    if (!this._hass || this._unsubEvents) return;
+    try {
+      this._unsubEvents = await this._hass.connection.subscribeEvents((event) => {
+        if (event.event_type && event.event_type.startsWith("smart_wake_")) {
+          this._fetchAlarms();
+        }
+      }, "smart_wake_status_changed");
+    } catch (err) {
+      console.debug("Could not subscribe to smart_wake events:", err);
+    }
+  }
+
+  async _toggleAlarm(alarmId, enabled) {
+    if (!this._hass) return;
+    try {
+      await this._hass.callWS({
+        type: "smart_wake/toggle",
+        alarm_id: alarmId,
+        enabled: enabled,
+      });
+      await this._fetchAlarms();
+    } catch (err) {
+      console.error("Toggle alarm failed:", err);
+    }
+  }
+
+  _showToast(msg, duration = 4000) {
+    if (!this.shadowRoot) return;
+    let toast = this.shadowRoot.getElementById("smartWakeToast");
+    if (!toast) return;
+    toast.textContent = msg;
+    toast.classList.add("visible");
+    if (this._toastTimeout) clearTimeout(this._toastTimeout);
+    this._toastTimeout = setTimeout(() => {
+      toast.classList.remove("visible");
+    }, duration);
+  }
+  async _snoozeAlarm(alarmId) {
+    if (!this._hass) return;
+    try {
+      const res = await this._hass.callWS({
+        type: "smart_wake/snooze",
+        alarm_id: alarmId,
+      });
+      await this._fetchAlarms();
+      if (res && res.snoozed) {
+        this._showToast("💤 Wecker pausiert und schlummert...");
+      } else {
+        this._showToast("⚠️ Schlummern nicht möglich oder Maximum erreicht!", 4000);
+      }
+    } catch (err) {
+      this._showToast("⚠️ Schlummern nicht möglich oder Maximum erreicht!", 4000);
+    }
+  }
+
+  async _dismissAlarm(alarmId) {
+    if (!this._hass) return;
+    try {
+      const res = await this._hass.callWS({
+        type: "smart_wake/dismiss",
+        alarm_id: alarmId,
+      });
+      await this._fetchAlarms();
+      if (res && res.snoozed) {
+        this._showToast("🛡️ Anti-Cheat aktiv: Quittierung wirkt als Schlummern, bis Aufsteh-Beweis (Bewegungsmelder, Leistungsmesser oder NFC) erbracht ist!", 5000);
+      } else if (res && res.dismissed) {
+        this._showToast("🛑 Wecker erfolgreich beendet und quittiert!", 3000);
+      }
+    } catch (err) {
+      console.error("Dismiss failed:", err);
+    }
+  }
+
+  async _startDryRun(alarmId) {
+    if (!this._hass) return;
+    try {
+      await this._hass.callWS({
+        type: "smart_wake/test_alarm",
+        alarm_id: alarmId,
+        mode: "dry_run",
+      });
+      await this._fetchAlarms();
+
+      // Poll progress during test
+      if (this._testInterval) clearInterval(this._testInterval);
+      this._testInterval = setInterval(async () => {
+        await this._fetchAlarms();
+        const a = this._alarms.find((x) => x.id === alarmId);
+        if (!a || !a.is_testing) {
+          clearInterval(this._testInterval);
+        }
+      }, 1000);
+    } catch (err) {
+      console.error("Dry run test failed:", err);
+      alert("Fehler beim Starten des Zeitraffer-Tests: " + (err.message || err));
+    }
+  }
+
+  async _startFullTest(alarmId, startFromPreAlarm = false) {
+    if (!this._hass) return;
+    try {
+      await this._hass.callWS({
+        type: "smart_wake/start_full_test",
+        alarm_id: alarmId,
+        start_from_pre_alarm: startFromPreAlarm,
+      });
+      await this._fetchAlarms();
+
+      // Poll updates during full test
+      if (this._testInterval) clearInterval(this._testInterval);
+      this._testInterval = setInterval(async () => {
+        await this._fetchAlarms();
+        const a = this._alarms.find((x) => x.id === alarmId);
+        if (!a || !a.is_testing) {
+          clearInterval(this._testInterval);
+        }
+      }, 2000);
+    } catch (err) {
+      console.error("Full test failed:", err);
+      alert("Fehler beim Starten des vollen Testlaufs: " + (err.message || err));
+    }
+  }
+
+  async _stopTest(alarmId) {
+    if (!this._hass) return;
+    try {
+      await this._hass.callWS({
+        type: "smart_wake/stop_test",
+        alarm_id: alarmId,
+      });
+      if (this._testInterval) clearInterval(this._testInterval);
+      await this._fetchAlarms();
+    } catch (err) {
+      console.error("Stop test failed:", err);
+    }
+  }
+
+  _openTestModal(alarmId) {
+    this._testModalAlarmId = alarmId;
+    this._renderModals();
+  }
+
+  _closeTestModal() {
+    this._testModalAlarmId = null;
+    this._renderModals();
+  }
+  _toggleSidebar() {
+    // 1. Dispatch standard Home Assistant event (bubbles across shadow DOM)
+    const ev = new CustomEvent("hass-toggle-menu", {
+      bubbles: true,
+      composed: true,
+      cancelable: false,
+      detail: {},
+    });
+    this.dispatchEvent(ev);
+    window.dispatchEvent(ev);
+
+    // 2. Direct DOM dispatch to Home Assistant main elements if accessible
+    try {
+      const ha = document.querySelector("home-assistant");
+      if (ha) {
+        ha.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true }));
+        if (ha.shadowRoot) {
+          const haMain = ha.shadowRoot.querySelector("home-assistant-main");
+          if (haMain) {
+            haMain.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true }));
+            const drawer =
+              haMain.shadowRoot?.querySelector("ha-drawer") ||
+              haMain.shadowRoot?.querySelector("ha-sidebar");
+            if (drawer && typeof drawer.toggle === "function") {
+              drawer.toggle();
+            } else if (drawer && "open" in drawer) {
+              drawer.open = !drawer.open;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.debug("Direct DOM sidebar toggle notice:", e);
+    }
+
+    // 3. Parent window dispatch if embedded in an iframe
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true }));
+        const parentHa = window.parent.document?.querySelector("home-assistant");
+        if (parentHa) {
+          parentHa.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true }));
+        }
+      }
+    } catch (e) {
+      // Cross-origin iframe fallback
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // In-Panel Settings Modal Logic
+  // ---------------------------------------------------------------------------
+  _openSettingsModal(alarmId = null) {
+    this._editingAlarmId = alarmId || "__new__";
+    this._activeTab = "general";
+    this._saving = false;
+
+    if (alarmId) {
+      const alarm = this._alarms.find((a) => a.id === alarmId);
+      const rawCfg = (alarm && alarm.config) || {};
+      const sumCfg = (alarm && alarm.config_summary) || {};
+
+      this._editConfig = {
+        name: alarm ? alarm.name : "Wecker",
+        time: alarm ? alarm.time : "06:30",
+        enabled: alarm ? Boolean(alarm.enabled) : true,
+        days: alarm && alarm.days ? [...alarm.days] : ["mon", "tue", "wed", "thu", "fri"],
+
+        // Conditions
+        workday_only: Boolean(rawCfg.workday_only ?? sumCfg.workday_only ?? false),
+        workday_entity: rawCfg.workday_entity ?? sumCfg.workday_entity ?? "",
+        person_home_required: Boolean(rawCfg.person_home_required ?? sumCfg.person_home_required ?? false),
+        person_entities: Array.isArray(rawCfg.person_entities)
+          ? rawCfg.person_entities.join(", ")
+          : (sumCfg.person_entities ? sumCfg.person_entities.join(", ") : ""),
+        calendar_entity: rawCfg.calendar_entity ?? "",
+        calendar_behavior: rawCfg.calendar_behavior ?? "none",
+        weather_temp_entity: rawCfg.weather_temp_entity ?? sumCfg.weather_temp_entity ?? "",
+        weather_temp_threshold: rawCfg.weather_temp_threshold ?? 0.0,
+        weather_temp_offset: rawCfg.weather_temp_offset ?? 15,
+        weather_rain_entity: rawCfg.weather_rain_entity ?? "",
+        weather_rain_offset: rawCfg.weather_rain_offset ?? 10,
+        sleep_stage_entity: rawCfg.sleep_stage_entity ?? "",
+        sleep_stage_window: rawCfg.sleep_stage_window ?? 30,
+
+        // Phase 1: Pre-Alarm
+        pre_alarm_enabled: Boolean(rawCfg.pre_alarm_enabled ?? true),
+        pre_alarm_duration: rawCfg.pre_alarm_duration ?? alarm?.pre_alarm_duration ?? 15,
+        pre_alarm_light_entities: Array.isArray(rawCfg.pre_alarm_light_entities)
+          ? rawCfg.pre_alarm_light_entities.join(", ")
+          : (sumCfg.pre_alarm_lights ? sumCfg.pre_alarm_lights.join(", ") : ""),
+        pre_alarm_light_start_brightness: rawCfg.pre_alarm_light_start_brightness ?? 1,
+        pre_alarm_light_end_brightness: rawCfg.pre_alarm_light_end_brightness ?? 80,
+        pre_alarm_cover_entities: Array.isArray(rawCfg.pre_alarm_cover_entities)
+          ? rawCfg.pre_alarm_cover_entities.join(", ")
+          : (sumCfg.pre_alarm_covers ? sumCfg.pre_alarm_covers.join(", ") : ""),
+        pre_alarm_cover_position: rawCfg.pre_alarm_cover_position ?? 20,
+        pre_alarm_script_entity: rawCfg.pre_alarm_script_entity ?? "",
+
+        // Phase 2: Main Alarm
+        main_media_player_entities: Array.isArray(rawCfg.main_media_player_entities)
+          ? rawCfg.main_media_player_entities.join(", ")
+          : (sumCfg.main_media_players ? sumCfg.main_media_players.join(", ") : ""),
+        main_audio_content_id: rawCfg.main_audio_content_id ?? sumCfg.main_audio_content ?? "",
+        main_audio_content_type: rawCfg.main_audio_content_type ?? "music",
+        main_audio_fade_in: Boolean(rawCfg.main_audio_fade_in ?? true),
+        main_audio_fade_duration: rawCfg.main_audio_fade_duration ?? 30,
+        main_audio_target_volume: Math.round((rawCfg.main_audio_target_volume ?? 0.5) * 100),
+        main_tts_enabled: Boolean(rawCfg.main_tts_enabled ?? sumCfg.main_tts_enabled ?? false),
+        main_tts_message: rawCfg.main_tts_message ?? "Guten Morgen! Es ist {time} Uhr, draußen sind es {temp}°C.",
+        main_tts_engine: rawCfg.main_tts_engine ?? "",
+        main_script_entity: rawCfg.main_script_entity ?? "",
+
+        // Phase 3: Escalation
+        escalation_enabled: Boolean(rawCfg.escalation_enabled ?? true),
+        escalation_delay: rawCfg.escalation_delay ?? sumCfg.escalation_delay ?? 10,
+        escalation_volume: Math.round((rawCfg.escalation_volume ?? sumCfg.escalation_volume ?? 0.9) * 100),
+        escalation_volume_fade_duration: rawCfg.escalation_volume_fade_duration ?? sumCfg.escalation_volume_fade_duration ?? 30,
+        escalation_light_entities: Array.isArray(rawCfg.escalation_light_entities)
+          ? rawCfg.escalation_light_entities.join(", ")
+          : "",
+        escalation_light_brightness: rawCfg.escalation_light_brightness ?? 100,
+        escalation_light_cold_white: Boolean(rawCfg.escalation_light_cold_white ?? true),
+        escalation_cover_entities: Array.isArray(rawCfg.escalation_cover_entities)
+          ? rawCfg.escalation_cover_entities.join(", ")
+          : "",
+        escalation_cover_position: rawCfg.escalation_cover_position ?? 100,
+        escalation_script_entity: rawCfg.escalation_script_entity ?? "",
+
+        // Snooze & Anti-Cheat
+        snooze_duration: rawCfg.snooze_duration ?? alarm?.snooze_duration ?? 8,
+        max_snooze_count: rawCfg.max_snooze_count ?? alarm?.max_snooze_count ?? 2,
+        snooze_button_entity: rawCfg.snooze_button_entity ?? "",
+        dismiss_button_entity: rawCfg.dismiss_button_entity ?? sumCfg.dismiss_button ?? "",
+        dismiss_motion_entities: Array.isArray(rawCfg.dismiss_motion_entities)
+          ? rawCfg.dismiss_motion_entities.join(", ")
+          : (sumCfg.dismiss_motion ? sumCfg.dismiss_motion.join(", ") : ""),
+        dismiss_nfc_tags: Array.isArray(rawCfg.dismiss_nfc_tags)
+          ? rawCfg.dismiss_nfc_tags.join(", ")
+          : (sumCfg.dismiss_nfc ? sumCfg.dismiss_nfc.join(", ") : ""),
+        dismiss_power_sensor: rawCfg.dismiss_power_sensor ?? sumCfg.dismiss_power ?? "",
+        dismiss_power_threshold: rawCfg.dismiss_power_threshold ?? 10.0,
+      };
+    } else {
+      this._editConfig = {
+        name: "Neuer Wecker",
+        time: "06:30",
+        enabled: true,
+        days: ["mon", "tue", "wed", "thu", "fri"],
+
+        workday_only: false,
+        workday_entity: "binary_sensor.workday_sensor",
+        person_home_required: false,
+        person_entities: "",
+        calendar_entity: "",
+        calendar_behavior: "none",
+        weather_temp_entity: "",
+        weather_temp_threshold: 0.0,
+        weather_temp_offset: 15,
+        weather_rain_entity: "",
+        weather_rain_offset: 10,
+        sleep_stage_entity: "",
+        sleep_stage_window: 30,
+
+        pre_alarm_enabled: true,
+        pre_alarm_duration: 15,
+        pre_alarm_light_entities: "",
+        pre_alarm_light_start_brightness: 1,
+        pre_alarm_light_end_brightness: 80,
+        pre_alarm_cover_entities: "",
+        pre_alarm_cover_position: 20,
+        pre_alarm_script_entity: "",
+
+        main_media_player_entities: "",
+        main_audio_content_id: "",
+        main_audio_content_type: "music",
+        main_audio_fade_in: true,
+        main_audio_fade_duration: 30,
+        main_audio_target_volume: 50,
+        main_tts_enabled: false,
+        main_tts_message: "Guten Morgen! Es ist {time} Uhr, draußen sind es {temp}°C.",
+        main_tts_engine: "",
+        main_script_entity: "",
+
+        escalation_enabled: true,
+        escalation_delay: 10,
+        escalation_volume: 90,
+        escalation_volume_fade_duration: 30,
+        escalation_light_entities: "",
+        escalation_light_brightness: 100,
+        escalation_light_cold_white: true,
+        escalation_cover_entities: "",
+        escalation_cover_position: 100,
+        escalation_script_entity: "",
+
+        snooze_duration: 8,
+        max_snooze_count: 2,
+        snooze_button_entity: "",
+        dismiss_button_entity: "",
+        dismiss_motion_entities: "",
+        dismiss_nfc_tags: "",
+        dismiss_power_sensor: "",
+        dismiss_power_threshold: 10.0,
+      };
+    }
+    this._renderModals();
+  }
+
+  _closeSettingsModal() {
+    this._editingAlarmId = null;
+    this._editConfig = null;
+    this._saving = false;
+    this._renderModals();
+  }
+
+  _switchModalTab(targetTab) {
+    if (this._activeTab === targetTab) return;
+    this._collectFormValues();
+    this._activeTab = targetTab;
+
+    const root = this.shadowRoot;
+    if (!root) return;
+
+    root.querySelectorAll(".tab-btn").forEach((btn) => {
+      const tab = btn.getAttribute("data-tab");
+      if (tab === targetTab) {
+        btn.classList.add("active");
+      } else {
+        btn.classList.remove("active");
+      }
+    });
+
+    const modalBody = root.getElementById("modalBody");
+    if (modalBody) {
+      modalBody.innerHTML = this._renderTabContent();
+      this._initEntityAutocompletes();
+      if (targetTab === "general") {
+        this._attachDayChipsListeners();
+      }
+    }
+  }
+
+  _attachDayChipsListeners() {
+    const root = this.shadowRoot;
+    if (!root) return;
+    root.querySelectorAll(".day-chip").forEach((chip) => {
+      chip.onclick = () => {
+        const day = chip.getAttribute("data-day");
+        if (day && this._editConfig) {
+          const currentDays = this._editConfig.days || [];
+          if (currentDays.includes(day)) {
+            this._editConfig.days = currentDays.filter((d) => d !== day);
+            chip.classList.remove("active");
+          } else {
+            this._editConfig.days = [...currentDays, day];
+            chip.classList.add("active");
+          }
+        }
+      };
+    });
+  }
+  _collectFormValues() {
+    if (!this._editConfig || !this.shadowRoot) return;
+    const root = this.shadowRoot;
+
+    const getVal = (id) => {
+      const el = root.getElementById(id);
+      return el !== null ? el.value : undefined;
+    };
+    const getChecked = (id) => {
+      const el = root.getElementById(id);
+      return el !== null ? el.checked : undefined;
+    };
+
+    // General Tab
+    if (getVal("f_name") !== undefined) this._editConfig.name = getVal("f_name");
+    if (getVal("f_time") !== undefined) this._editConfig.time = getVal("f_time");
+    if (getChecked("f_enabled") !== undefined) this._editConfig.enabled = getChecked("f_enabled");
+
+    // Conditions Tab
+    if (getChecked("f_workday_only") !== undefined) this._editConfig.workday_only = getChecked("f_workday_only");
+    if (getVal("f_workday_entity") !== undefined) this._editConfig.workday_entity = getVal("f_workday_entity");
+    if (getChecked("f_person_home_required") !== undefined) this._editConfig.person_home_required = getChecked("f_person_home_required");
+    if (getVal("f_person_entities") !== undefined) this._editConfig.person_entities = getVal("f_person_entities");
+    if (getVal("f_calendar_entity") !== undefined) this._editConfig.calendar_entity = getVal("f_calendar_entity");
+    if (getVal("f_calendar_behavior") !== undefined) this._editConfig.calendar_behavior = getVal("f_calendar_behavior");
+    if (getVal("f_weather_temp_entity") !== undefined) this._editConfig.weather_temp_entity = getVal("f_weather_temp_entity");
+    if (getVal("f_weather_temp_threshold") !== undefined) this._editConfig.weather_temp_threshold = getVal("f_weather_temp_threshold");
+    if (getVal("f_weather_temp_offset") !== undefined) this._editConfig.weather_temp_offset = getVal("f_weather_temp_offset");
+    if (getVal("f_weather_rain_entity") !== undefined) this._editConfig.weather_rain_entity = getVal("f_weather_rain_entity");
+    if (getVal("f_weather_rain_offset") !== undefined) this._editConfig.weather_rain_offset = getVal("f_weather_rain_offset");
+    if (getVal("f_sleep_stage_entity") !== undefined) this._editConfig.sleep_stage_entity = getVal("f_sleep_stage_entity");
+    if (getVal("f_sleep_stage_window") !== undefined) this._editConfig.sleep_stage_window = getVal("f_sleep_stage_window");
+
+    // Phase 1 Tab
+    if (getChecked("f_pre_alarm_enabled") !== undefined) this._editConfig.pre_alarm_enabled = getChecked("f_pre_alarm_enabled");
+    if (getVal("f_pre_alarm_duration") !== undefined) this._editConfig.pre_alarm_duration = getVal("f_pre_alarm_duration");
+    if (getVal("f_pre_alarm_light_entities") !== undefined) this._editConfig.pre_alarm_light_entities = getVal("f_pre_alarm_light_entities");
+    if (getVal("f_pre_alarm_light_start_brightness") !== undefined) this._editConfig.pre_alarm_light_start_brightness = getVal("f_pre_alarm_light_start_brightness");
+    if (getVal("f_pre_alarm_light_end_brightness") !== undefined) this._editConfig.pre_alarm_light_end_brightness = getVal("f_pre_alarm_light_end_brightness");
+    if (getVal("f_pre_alarm_cover_entities") !== undefined) this._editConfig.pre_alarm_cover_entities = getVal("f_pre_alarm_cover_entities");
+    if (getVal("f_pre_alarm_cover_position") !== undefined) this._editConfig.pre_alarm_cover_position = getVal("f_pre_alarm_cover_position");
+    if (getVal("f_pre_alarm_script_entity") !== undefined) this._editConfig.pre_alarm_script_entity = getVal("f_pre_alarm_script_entity");
+
+    // Phase 2 Tab
+    if (getVal("f_main_media_player_entities") !== undefined) this._editConfig.main_media_player_entities = getVal("f_main_media_player_entities");
+    if (getVal("f_main_audio_content_id") !== undefined) this._editConfig.main_audio_content_id = getVal("f_main_audio_content_id");
+    if (getVal("f_main_audio_content_type") !== undefined) this._editConfig.main_audio_content_type = getVal("f_main_audio_content_type");
+    if (getChecked("f_main_audio_fade_in") !== undefined) this._editConfig.main_audio_fade_in = getChecked("f_main_audio_fade_in");
+    if (getVal("f_main_audio_fade_duration") !== undefined) this._editConfig.main_audio_fade_duration = getVal("f_main_audio_fade_duration");
+    if (getVal("f_main_audio_target_volume") !== undefined) this._editConfig.main_audio_target_volume = getVal("f_main_audio_target_volume");
+    if (getChecked("f_main_tts_enabled") !== undefined) this._editConfig.main_tts_enabled = getChecked("f_main_tts_enabled");
+    if (getVal("f_main_tts_message") !== undefined) this._editConfig.main_tts_message = getVal("f_main_tts_message");
+    if (getVal("f_main_tts_engine") !== undefined) this._editConfig.main_tts_engine = getVal("f_main_tts_engine");
+    if (getVal("f_main_script_entity") !== undefined) this._editConfig.main_script_entity = getVal("f_main_script_entity");
+
+    // Phase 3 Tab
+    if (getChecked("f_escalation_enabled") !== undefined) this._editConfig.escalation_enabled = getChecked("f_escalation_enabled");
+    if (getVal("f_escalation_delay") !== undefined) this._editConfig.escalation_delay = getVal("f_escalation_delay");
+    if (getVal("f_escalation_volume") !== undefined) this._editConfig.escalation_volume = getVal("f_escalation_volume");
+    if (getVal("f_escalation_volume_fade_duration") !== undefined) this._editConfig.escalation_volume_fade_duration = getVal("f_escalation_volume_fade_duration");
+    if (getChecked("f_escalation_light_cold_white") !== undefined) this._editConfig.escalation_light_cold_white = getChecked("f_escalation_light_cold_white");
+    if (getVal("f_escalation_light_entities") !== undefined) this._editConfig.escalation_light_entities = getVal("f_escalation_light_entities");
+    if (getVal("f_escalation_cover_position") !== undefined) this._editConfig.escalation_cover_position = getVal("f_escalation_cover_position");
+    if (getVal("f_escalation_cover_entities") !== undefined) this._editConfig.escalation_cover_entities = getVal("f_escalation_cover_entities");
+    if (getVal("f_escalation_script_entity") !== undefined) this._editConfig.escalation_script_entity = getVal("f_escalation_script_entity");
+
+    // Snooze & Anti-Cheat Tab
+    if (getVal("f_snooze_duration") !== undefined) this._editConfig.snooze_duration = getVal("f_snooze_duration");
+    if (getVal("f_max_snooze_count") !== undefined) this._editConfig.max_snooze_count = getVal("f_max_snooze_count");
+    if (getVal("f_snooze_button_entity") !== undefined) this._editConfig.snooze_button_entity = getVal("f_snooze_button_entity");
+    if (getVal("f_dismiss_button_entity") !== undefined) this._editConfig.dismiss_button_entity = getVal("f_dismiss_button_entity");
+    if (getVal("f_dismiss_motion_entities") !== undefined) this._editConfig.dismiss_motion_entities = getVal("f_dismiss_motion_entities");
+    if (getVal("f_dismiss_nfc_tags") !== undefined) this._editConfig.dismiss_nfc_tags = getVal("f_dismiss_nfc_tags");
+    if (getVal("f_dismiss_power_sensor") !== undefined) this._editConfig.dismiss_power_sensor = getVal("f_dismiss_power_sensor");
+    if (getVal("f_dismiss_power_threshold") !== undefined) this._editConfig.dismiss_power_threshold = getVal("f_dismiss_power_threshold");
+  }
+
+  async _saveSettings() {
+    if (!this._hass || !this._editConfig) return;
+    this._collectFormValues();
+    this._saving = true;
+
+    const btnSave = this.shadowRoot ? this.shadowRoot.getElementById("btnSaveModal") : null;
+    if (btnSave) {
+      btnSave.disabled = true;
+      btnSave.textContent = "💾 Speichern...";
+    }
+
+    try {
+      const toList = (val) => {
+        if (!val) return [];
+        if (Array.isArray(val)) return val;
+        return val.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+      };
+
+      const payloadConfig = {
+        name: this._editConfig.name,
+        time: this._editConfig.time,
+        enabled: Boolean(this._editConfig.enabled),
+        days: this._editConfig.days,
+
+        workday_only: Boolean(this._editConfig.workday_only),
+        workday_entity: this._editConfig.workday_entity || null,
+        person_home_required: Boolean(this._editConfig.person_home_required),
+        person_entities: toList(this._editConfig.person_entities),
+        calendar_entity: this._editConfig.calendar_entity || null,
+        calendar_behavior: this._editConfig.calendar_behavior || "none",
+        weather_temp_entity: this._editConfig.weather_temp_entity || null,
+        weather_temp_threshold: parseFloat(this._editConfig.weather_temp_threshold) || 0.0,
+        weather_temp_offset: parseInt(this._editConfig.weather_temp_offset, 10) || 15,
+        weather_rain_entity: this._editConfig.weather_rain_entity || null,
+        weather_rain_offset: parseInt(this._editConfig.weather_rain_offset, 10) || 10,
+        sleep_stage_entity: this._editConfig.sleep_stage_entity || null,
+        sleep_stage_window: parseInt(this._editConfig.sleep_stage_window, 10) || 30,
+
+        pre_alarm_enabled: Boolean(this._editConfig.pre_alarm_enabled),
+        pre_alarm_duration: parseInt(this._editConfig.pre_alarm_duration, 10) || 15,
+        pre_alarm_light_entities: toList(this._editConfig.pre_alarm_light_entities),
+        pre_alarm_light_start_brightness: parseInt(this._editConfig.pre_alarm_light_start_brightness, 10) || 1,
+        pre_alarm_light_end_brightness: parseInt(this._editConfig.pre_alarm_light_end_brightness, 10) || 80,
+        pre_alarm_cover_entities: toList(this._editConfig.pre_alarm_cover_entities),
+        pre_alarm_cover_position: parseInt(this._editConfig.pre_alarm_cover_position, 10) || 20,
+        pre_alarm_script_entity: this._editConfig.pre_alarm_script_entity || null,
+
+        main_media_player_entities: toList(this._editConfig.main_media_player_entities),
+        main_audio_content_id: this._editConfig.main_audio_content_id || null,
+        main_audio_content_type: this._editConfig.main_audio_content_type || "music",
+        main_audio_fade_in: Boolean(this._editConfig.main_audio_fade_in),
+        main_audio_fade_duration: parseInt(this._editConfig.main_audio_fade_duration, 10) || 30,
+        main_audio_target_volume: (parseInt(this._editConfig.main_audio_target_volume, 10) || 50) / 100,
+        main_tts_enabled: Boolean(this._editConfig.main_tts_enabled),
+        main_tts_message: this._editConfig.main_tts_message || "",
+        main_tts_engine: this._editConfig.main_tts_engine || null,
+        main_script_entity: this._editConfig.main_script_entity || null,
+
+        escalation_enabled: Boolean(this._editConfig.escalation_enabled),
+        escalation_delay: parseInt(this._editConfig.escalation_delay, 10) || 10,
+        escalation_volume: (parseInt(this._editConfig.escalation_volume, 10) || 90) / 100,
+        escalation_volume_fade_duration: parseInt(this._editConfig.escalation_volume_fade_duration, 10) ?? 30,
+        escalation_light_entities: toList(this._editConfig.escalation_light_entities),
+        escalation_light_brightness: parseInt(this._editConfig.escalation_light_brightness, 10) || 100,
+        escalation_light_cold_white: Boolean(this._editConfig.escalation_light_cold_white),
+        escalation_cover_entities: toList(this._editConfig.escalation_cover_entities),
+        escalation_cover_position: parseInt(this._editConfig.escalation_cover_position, 10) || 100,
+        escalation_script_entity: this._editConfig.escalation_script_entity || null,
+
+        snooze_duration: parseInt(this._editConfig.snooze_duration, 10) || 8,
+        max_snooze_count: parseInt(this._editConfig.max_snooze_count, 10) || 2,
+        snooze_button_entity: this._editConfig.snooze_button_entity || null,
+        dismiss_button_entity: this._editConfig.dismiss_button_entity || null,
+        dismiss_motion_entities: toList(this._editConfig.dismiss_motion_entities),
+        dismiss_nfc_tags: toList(this._editConfig.dismiss_nfc_tags),
+        dismiss_power_sensor: this._editConfig.dismiss_power_sensor || null,
+        dismiss_power_threshold: parseFloat(this._editConfig.dismiss_power_threshold) || 10.0,
+      };
+
+      if (this._editingAlarmId === "__new__") {
+        await this._hass.callWS({
+          type: "smart_wake/create_alarm",
+          name: this._editConfig.name,
+          time: this._editConfig.time,
+          days: this._editConfig.days,
+          enabled: this._editConfig.enabled,
+          config: payloadConfig,
+        });
+      } else {
+        await this._hass.callWS({
+          type: "smart_wake/update_config",
+          alarm_id: this._editingAlarmId,
+          config: payloadConfig,
+        });
+      }
+
+      this._closeSettingsModal();
+      await this._fetchAlarms();
+    } catch (err) {
+      console.error("Failed to save alarm settings:", err);
+      alert("Fehler beim Speichern: " + (err.message || err));
+      this._saving = false;
+      const btnSave = this.shadowRoot ? this.shadowRoot.getElementById("btnSaveModal") : null;
+      if (btnSave) {
+        btnSave.disabled = false;
+        btnSave.textContent = "💾 Einstellungen speichern";
+      }
+    }
+  }
+  async _deleteAlarm(alarmId) {
+    if (!this._hass) return;
+    if (!confirm("Möchtest du diesen Smart Wake Wecker wirklich löschen?")) return;
+    try {
+      await this._hass.callWS({
+        type: "smart_wake/delete_alarm",
+        alarm_id: alarmId,
+      });
+      this._closeSettingsModal();
+      await this._fetchAlarms();
+    } catch (err) {
+      console.error("Failed to delete alarm:", err);
+      alert("Fehler beim Löschen: " + (err.message || err));
+    }
+  }
+
+  _formatTime(isoStr) {
+    if (!isoStr) return "--:--";
+    try {
+      const d = new Date(isoStr);
+      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    } catch {
+      return "--:--";
+    }
+  }
+
+  _getStatusBadge(status, phase, isFullTest = false) {
+    let color = "#78909c";
+    let text = status.toUpperCase();
+    let pulse = false;
+
+    if (isFullTest) {
+      if (status === "ringing") {
+        color = "#e53935";
+        text = phase === "escalation" ? "🔔 TEST: ESKALATION!" : "🔔 TEST: KLINGELT";
+        pulse = true;
+      } else if (status === "pre_alarm") {
+        color = "#fb8c00";
+        text = "🌅 TEST: PRE-ALARM";
+        pulse = true;
+      } else if (status === "snoozed") {
+        color = "#8e24aa";
+        text = "💤 TEST: SCHLUMMERT";
+        pulse = true;
+      } else {
+        color = "#e53935";
+        text = "🔔 TESTLAUF AKTIV";
+        pulse = true;
+      }
+    } else {
+      switch (status) {
+        case "ringing":
+          color = "#e53935";
+          text = phase === "escalation" ? "🔔 ESKALATION!" : "🔔 KLINGELT";
+          pulse = true;
+          break;
+        case "pre_alarm":
+          color = "#fb8c00";
+          text = "🌅 PRE-ALARM";
+          pulse = true;
+          break;
+        case "snoozed":
+          color = "#8e24aa";
+          text = "💤 SCHLUMMERT";
+          break;
+        case "skipped":
+          color = "#546e7a";
+          text = "⏭️ ÜBERSPRUNGEN";
+          break;
+        case "dismissed":
+          color = "#43a047";
+          text = "✅ QUITTIERT";
+          break;
+        case "idle":
+          color = "#2e7d32";
+          text = "AKTIV (IDLE)";
+          break;
+      }
+    }
+
+    return `<span class="badge ${pulse ? "pulse" : ""}" style="background-color: ${color};">${text}</span>`;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Entity Autocomplete & Live Preview Helpers
+  // ---------------------------------------------------------------------------
+  _getEntityDomainIcon(entityId, attributes = {}) {
+    if (!entityId) return "🔹";
+    const domain = entityId.split(".")[0];
+    switch (domain) {
+      case "light":
+        return "💡";
+      case "switch":
+        return "🔌";
+      case "person":
+        return "👤";
+      case "media_player":
+        return "🔊";
+      case "climate":
+        return "🌡️";
+      case "cover":
+        return "🪟";
+      case "calendar":
+        return "📅";
+      case "binary_sensor": {
+        const dc = attributes.device_class;
+        if (dc === "motion" || dc === "occupancy" || dc === "presence") return "🏃";
+        if (dc === "door" || dc === "window" || dc === "opening") return "🚪";
+        if (dc === "moisture") return "💧";
+        if (dc === "sound") return "🔊";
+        if (dc === "vibration") return "📳";
+        return "🔘";
+      }
+      case "sensor": {
+        const dc = attributes.device_class;
+        if (dc === "temperature") return "🌡️";
+        if (dc === "power" || dc === "energy") return "⚡";
+        if (dc === "battery") return "🔋";
+        if (dc === "humidity") return "💧";
+        if (dc === "illuminance") return "☀️";
+        return "📊";
+      }
+      case "script":
+        return "📜";
+      case "button":
+        return "🔘";
+      case "event":
+        return "⚡";
+      case "tts":
+        return "🗣️";
+      case "weather":
+        return "⛅";
+      case "automation":
+        return "⚙️";
+      default:
+        return "🔹";
+    }
+  }
+
+  _formatEntityState(stateObj) {
+    if (!stateObj) return "";
+    let val = stateObj.state;
+    const unit = stateObj.attributes?.unit_of_measurement;
+    if (val === "on") val = "an";
+    else if (val === "off") val = "aus";
+    else if (val === "home") val = "zuhause";
+    else if (val === "not_home") val = "abwesend";
+    else if (val === "unavailable") val = "nicht verfügbar";
+    else if (val === "unknown") val = "unbekannt";
+    else if (val === "playing") val = "spielt";
+    else if (val === "paused") val = "pausiert";
+    else if (val === "idle") val = "standby";
+
+    if (unit) return `${val} ${unit}`;
+    return val;
+  }
+
+  _searchEntities(query = "", domainsStr = "") {
+    if (!this._hass || !this._hass.states) return [];
+    const allowedDomains = domainsStr
+      ? domainsStr.split(",").map((d) => d.trim().toLowerCase()).filter(Boolean)
+      : [];
+    const q = (query || "").trim().toLowerCase();
+
+    const allStates = Object.values(this._hass.states);
+    const results = [];
+
+    for (const s of allStates) {
+      const eid = s.entity_id.toLowerCase();
+      const domain = eid.split(".")[0];
+      const fname = (s.attributes?.friendly_name || "").toLowerCase();
+
+      const inDomain = allowedDomains.length === 0 || allowedDomains.includes(domain);
+
+      let score = 0;
+      if (!q) {
+        if (!inDomain) continue;
+        score = 1;
+      } else {
+        if (eid === q) score = 100;
+        else if (fname === q) score = 90;
+        else if (eid.startsWith(q)) score = 80;
+        else if (fname.startsWith(q)) score = 70;
+        else if (eid.includes(q)) score = 60;
+        else if (fname.includes(q)) score = 50;
+        else continue;
+
+        if (inDomain) score += 25;
+      }
+
+      results.push({
+        state: s,
+        score,
+        name: s.attributes?.friendly_name || s.entity_id,
+      });
+    }
+
+    results.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.name.localeCompare(b.name);
+    });
+
+    return results.slice(0, 10).map((r) => r.state);
+  }
+
+  _renderEntityField(id, label, value, placeholder, hint, domain, isMultiple = false) {
+    return `
+      <div class="form-group">
+        <label class="form-label" for="${id}">${label}</label>
+        <div class="entity-input-wrapper">
+          <input
+            class="form-input entity-autocomplete-input"
+            id="${id}"
+            type="text"
+            value="${value || ""}"
+            placeholder="${placeholder || ""}"
+            data-domain="${domain || ""}"
+            data-multiple="${isMultiple ? "true" : "false"}"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <div class="entity-autocomplete-dropdown" id="dropdown-${id}" style="display: none;"></div>
+        </div>
+        <div class="entity-preview-chips" id="preview-${id}"></div>
+        ${hint ? `<span class="form-hint">${hint}</span>` : ""}
+      </div>
+    `;
+  }
+
+  _updatePreviewChips(input, chipsContainer) {
+    if (!input || !chipsContainer) return;
+    const rawVal = input.value || "";
+    const isMultiple = input.getAttribute("data-multiple") === "true";
+    const parts = rawVal
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    if (parts.length === 0) {
+      if (chipsContainer.children.length > 0) {
+        chipsContainer.innerHTML = "";
+      }
+      return;
+    }
+
+    // Check if same entities are already rendered to avoid rebuilding DOM & flickering
+    const existingChips = Array.from(chipsContainer.querySelectorAll(".entity-chip"));
+    const existingIds = existingChips.map((c) => c.getAttribute("data-entity-id"));
+    const sameList =
+      existingIds.length === parts.length &&
+      existingIds.every((id, idx) => id === parts[idx]);
+
+    if (sameList) {
+      // Update text and verification state in-place without touching DOM tree or listeners
+      parts.forEach((entId, idx) => {
+        const chip = existingChips[idx];
+        const stateObj = this._hass && this._hass.states ? this._hass.states[entId] : null;
+        const stateSpan = chip.querySelector(".entity-chip-state");
+        if (stateObj) {
+          const newState = this._formatEntityState(stateObj);
+          if (stateSpan && stateSpan.textContent !== newState) {
+            stateSpan.textContent = newState;
+          }
+          if (chip.classList.contains("unverified")) {
+            chip.classList.remove("unverified");
+            const iconSpan = chip.querySelector(".entity-chip-icon");
+            if (iconSpan) iconSpan.textContent = this._getEntityDomainIcon(entId, stateObj.attributes);
+            const nameSpan = chip.querySelector(".entity-chip-name");
+            if (nameSpan) nameSpan.textContent = stateObj.attributes?.friendly_name || entId;
+          }
+        } else {
+          if (!chip.classList.contains("unverified")) {
+            chip.classList.add("unverified");
+            const iconSpan = chip.querySelector(".entity-chip-icon");
+            if (iconSpan) iconSpan.textContent = "⚠️";
+          }
+          if (stateSpan && stateSpan.textContent !== "Nicht in HA gefunden") {
+            stateSpan.textContent = "Nicht in HA gefunden";
+          }
+        }
+      });
+      return;
+    }
+
+    const html = parts.map((entId) => {
+      const stateObj = this._hass && this._hass.states ? this._hass.states[entId] : null;
+      if (stateObj) {
+        const icon = this._getEntityDomainIcon(entId, stateObj.attributes);
+        const name = stateObj.attributes?.friendly_name || entId;
+        const stateStr = this._formatEntityState(stateObj);
+        return `
+          <div class="entity-chip" data-entity-id="${entId}" title="${entId}">
+            <span class="entity-chip-icon">${icon}</span>
+            <span class="entity-chip-name">${name}</span>
+            <span class="entity-chip-state">${stateStr}</span>
+            <button type="button" class="entity-chip-remove" data-remove="${entId}" title="${entId} entfernen">&times;</button>
+          </div>
+        `;
+      } else {
+        return `
+          <div class="entity-chip unverified" data-entity-id="${entId}" title="Nicht in Home Assistant gefunden">
+            <span class="entity-chip-icon">⚠️</span>
+            <span class="entity-chip-name">${entId}</span>
+            <span class="entity-chip-state">Nicht in HA gefunden</span>
+            <button type="button" class="entity-chip-remove" data-remove="${entId}" title="${entId} entfernen">&times;</button>
+          </div>
+        `;
+      }
+    }).join("");
+
+    chipsContainer.innerHTML = html;
+
+    chipsContainer.querySelectorAll(".entity-chip-remove").forEach((btn) => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const toRemove = btn.getAttribute("data-remove");
+        if (!toRemove) return;
+
+        if (isMultiple) {
+          const currentList = input.value
+            .split(",")
+            .map((p) => p.trim())
+            .filter((p) => p && p !== toRemove);
+          input.value = currentList.join(", ");
+        } else {
+          input.value = "";
+        }
+
+        this._updatePreviewChips(input, chipsContainer);
+        this._collectFormValues();
+      };
+    });
+  }
+
+  _refreshAllPreviewChips() {
+    if (!this.shadowRoot) return;
+    this.shadowRoot.querySelectorAll(".entity-autocomplete-input").forEach((input) => {
+      const preview = this.shadowRoot.getElementById(`preview-${input.id}`);
+      if (preview) {
+        this._updatePreviewChips(input, preview);
+      }
+    });
+  }
+
+  _initEntityAutocompletes() {
+    const root = this.shadowRoot;
+    if (!root) return;
+
+    const inputs = root.querySelectorAll(".entity-autocomplete-input");
+    inputs.forEach((input) => {
+      const id = input.id;
+      const dropdown = root.getElementById(`dropdown-${id}`);
+      const preview = root.getElementById(`preview-${id}`);
+      const domain = input.getAttribute("data-domain") || "";
+      const isMulti = input.getAttribute("data-multiple") === "true";
+
+      if (!dropdown || !preview) return;
+
+      this._updatePreviewChips(input, preview);
+
+      let currentResults = [];
+      let activeIdx = -1;
+
+      const getActiveToken = () => {
+        if (!isMulti) return input.value.trim();
+        const pos = input.selectionStart ?? input.value.length;
+        const textBefore = input.value.slice(0, pos);
+        const lastComma = textBefore.lastIndexOf(",");
+        return (lastComma >= 0 ? textBefore.slice(lastComma + 1) : textBefore).trim();
+      };
+
+      const selectEntity = (eid) => {
+        if (!isMulti) {
+          input.value = eid;
+        } else {
+          const pos = input.selectionStart ?? input.value.length;
+          const textBefore = input.value.slice(0, pos);
+          const textAfter = input.value.slice(pos);
+          const lastComma = textBefore.lastIndexOf(",");
+          const prefix = lastComma >= 0 ? textBefore.slice(0, lastComma + 1) + " " : "";
+          input.value = (prefix + eid + ", " + textAfter.replace(/^[\s,]+/, "")).trim();
+        }
+        dropdown.style.display = "none";
+        activeIdx = -1;
+        this._updatePreviewChips(input, preview);
+        this._collectFormValues();
+        input.focus();
+      };
+
+      const renderDropdown = () => {
+        if (currentResults.length === 0) {
+          dropdown.innerHTML = `<div class="autocomplete-no-results">Keine passenden Entities gefunden</div>`;
+        } else {
+          dropdown.innerHTML = currentResults.map((s, idx) => {
+            const icon = this._getEntityDomainIcon(s.entity_id, s.attributes);
+            const name = s.attributes?.friendly_name || s.entity_id;
+            const stateStr = this._formatEntityState(s);
+            return `
+              <div class="autocomplete-item ${idx === activeIdx ? "highlighted" : ""}" data-index="${idx}" data-eid="${s.entity_id}">
+                <div class="autocomplete-item-left">
+                  <span class="autocomplete-item-icon">${icon}</span>
+                  <div class="autocomplete-item-info">
+                    <span class="autocomplete-item-name">${name}</span>
+                    <span class="autocomplete-item-id">${s.entity_id}</span>
+                  </div>
+                </div>
+                <div class="autocomplete-item-right">
+                  <span class="autocomplete-item-state">${stateStr}</span>
+                </div>
+              </div>
+            `;
+          }).join("");
+
+          dropdown.querySelectorAll(".autocomplete-item").forEach((item) => {
+            item.onmousedown = (e) => {
+              e.preventDefault();
+              const eid = item.getAttribute("data-eid");
+              if (eid) selectEntity(eid);
+            };
+          });
+        }
+        dropdown.style.display = "block";
+      };
+
+      const openAutocomplete = () => {
+        root.querySelectorAll(".entity-autocomplete-dropdown").forEach((dd) => {
+          if (dd !== dropdown) dd.style.display = "none";
+        });
+        const query = getActiveToken();
+        currentResults = this._searchEntities(query, domain);
+        activeIdx = -1;
+        renderDropdown();
+      };
+
+      input.onfocus = () => {
+        openAutocomplete();
+      };
+
+      input.oninput = () => {
+        openAutocomplete();
+        this._updatePreviewChips(input, preview);
+        this._collectFormValues();
+      };
+
+      input.onkeydown = (e) => {
+        if (dropdown.style.display === "none") {
+          if (e.key === "ArrowDown") {
+            openAutocomplete();
+            e.preventDefault();
+          }
+          return;
+        }
+
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          if (currentResults.length > 0) {
+            activeIdx = (activeIdx + 1) % currentResults.length;
+            renderDropdown();
+            const highlighted = dropdown.querySelector(".autocomplete-item.highlighted");
+            if (highlighted) highlighted.scrollIntoView({ block: "nearest" });
+          }
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          if (currentResults.length > 0) {
+            activeIdx = (activeIdx - 1 + currentResults.length) % currentResults.length;
+            renderDropdown();
+            const highlighted = dropdown.querySelector(".autocomplete-item.highlighted");
+            if (highlighted) highlighted.scrollIntoView({ block: "nearest" });
+          }
+        } else if (e.key === "Enter") {
+          if (activeIdx >= 0 && currentResults[activeIdx]) {
+            e.preventDefault();
+            selectEntity(currentResults[activeIdx].entity_id);
+          }
+        } else if (e.key === "Escape") {
+          dropdown.style.display = "none";
+          activeIdx = -1;
+        }
+      };
+
+      input.onblur = () => {
+        setTimeout(() => {
+          dropdown.style.display = "none";
+        }, 150);
+      };
+    });
+  }
+
+  _renderDashboard() {
+    this._ensureShadowStructure();
+    const appEl = this.shadowRoot.getElementById("panelApp");
+    if (!appEl) return;
+
+    appEl.innerHTML = `
       <div class="header">
         <div class="title-group">
           <button
@@ -2183,10 +2344,9 @@ class SmartWakePanel extends HTMLElement {
       </div>
 
       ${this._renderBody()}
-
-      ${this._editingAlarmId ? this._renderSettingsModal() : ""}
-      ${this._testModalAlarmId ? this._renderTestModal() : ""}
     `;
+
+    this._dashboardRendered = true;
 
     // Attach header listeners
     const btnToggleMenu = this.shadowRoot.getElementById("btnToggleMenu");
@@ -2241,18 +2401,29 @@ class SmartWakePanel extends HTMLElement {
         btnDismiss.onclick = () => this._dismissAlarm(alarm.id);
       }
     });
+  }
 
-    // Attach Settings Modal listeners if modal is open
+  _renderModals() {
+    this._ensureShadowStructure();
+    const modalHost = this.shadowRoot.getElementById("modalHost");
+    if (!modalHost) return;
+
     if (this._editingAlarmId) {
+      modalHost.innerHTML = this._renderSettingsModal();
       this._attachModalListeners();
-    }
-
-    // Attach Test Modal listeners if test modal is open
-    if (this._testModalAlarmId) {
+    } else if (this._testModalAlarmId) {
+      modalHost.innerHTML = this._renderTestModal();
       this._attachTestModalListeners();
+    } else {
+      modalHost.innerHTML = "";
     }
   }
 
+  _render() {
+    this._ensureShadowStructure();
+    this._renderDashboard();
+    this._renderModals();
+  }
   _renderTestModal() {
     const alarm = this._alarms.find((a) => a.id === this._testModalAlarmId);
     if (!alarm) return "";
@@ -2365,30 +2536,14 @@ class SmartWakePanel extends HTMLElement {
     root.querySelectorAll(".tab-btn").forEach((btn) => {
       btn.onclick = () => {
         const targetTab = btn.getAttribute("data-tab");
-        if (targetTab && targetTab !== this._activeTab) {
-          this._collectFormValues();
-          this._activeTab = targetTab;
-          this._render();
+        if (targetTab) {
+          this._switchModalTab(targetTab);
         }
       };
     });
 
     // Day chips in general tab
-    root.querySelectorAll(".day-chip").forEach((chip) => {
-      chip.onclick = () => {
-        const day = chip.getAttribute("data-day");
-        if (day && this._editConfig) {
-          const currentDays = this._editConfig.days || [];
-          if (currentDays.includes(day)) {
-            this._editConfig.days = currentDays.filter((d) => d !== day);
-          } else {
-            this._editConfig.days = [...currentDays, day];
-          }
-          this._collectFormValues();
-          this._render();
-        }
-      };
-    });
+    this._attachDayChipsListeners();
 
     // Close open autocomplete dropdowns when clicking outside
     const container = root.querySelector(".modal-container");
@@ -2466,7 +2621,7 @@ class SmartWakePanel extends HTMLElement {
 
         <div class="time-row">
           <div class="big-time">${alarm.time} Uhr</div>
-          <div class="countdown-chip">
+          <div class="countdown-chip" id="countdown-${alarm.id}">
             ⏳ ${alarm.countdown_text}
           </div>
         </div>
@@ -2548,11 +2703,11 @@ class SmartWakePanel extends HTMLElement {
             ? `
             <div>
               <div style="font-size: 12px; color: #ffb74d; display: flex; justify-content: space-between;">
-                <span>⏱️ Testlauf Zeitraffer: ${alarm.dry_run_progress}s / 30s</span>
-                <span>${alarm.active_phase.toUpperCase()}</span>
+                <span id="dryrun-text-${alarm.id}">⏱️ Testlauf Zeitraffer: ${alarm.dry_run_progress}s / 30s</span>
+                <span id="dryrun-phase-${alarm.id}">${alarm.active_phase.toUpperCase()}</span>
               </div>
               <div class="dry-run-progress">
-                <div class="progress-bar" style="width: ${dryRunPct}%"></div>
+                <div class="progress-bar" id="dryrun-bar-${alarm.id}" style="width: ${dryRunPct}%"></div>
               </div>
             </div>
             `
@@ -2631,7 +2786,7 @@ class SmartWakePanel extends HTMLElement {
             <button class="tab-btn ${this._activeTab === "anti_cheat" ? "active" : ""}" data-tab="anti_cheat">🛑 Quittierung</button>
           </div>
 
-          <div class="modal-body">
+          <div class="modal-body" id="modalBody">
             ${this._renderTabContent()}
           </div>
 
