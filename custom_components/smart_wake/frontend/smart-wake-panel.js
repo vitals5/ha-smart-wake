@@ -299,10 +299,6 @@ class SmartWakePanel extends HTMLElement {
           : (sumCfg.pre_alarm_lights ? sumCfg.pre_alarm_lights.join(", ") : ""),
         pre_alarm_light_start_brightness: rawCfg.pre_alarm_light_start_brightness ?? 1,
         pre_alarm_light_end_brightness: rawCfg.pre_alarm_light_end_brightness ?? 80,
-        pre_alarm_climate_entities: Array.isArray(rawCfg.pre_alarm_climate_entities)
-          ? rawCfg.pre_alarm_climate_entities.join(", ")
-          : (sumCfg.pre_alarm_climates ? sumCfg.pre_alarm_climates.join(", ") : ""),
-        pre_alarm_climate_temp_delta: rawCfg.pre_alarm_climate_temp_delta ?? 2.0,
         pre_alarm_cover_entities: Array.isArray(rawCfg.pre_alarm_cover_entities)
           ? rawCfg.pre_alarm_cover_entities.join(", ")
           : (sumCfg.pre_alarm_covers ? sumCfg.pre_alarm_covers.join(", ") : ""),
@@ -327,6 +323,7 @@ class SmartWakePanel extends HTMLElement {
         escalation_enabled: Boolean(rawCfg.escalation_enabled ?? true),
         escalation_delay: rawCfg.escalation_delay ?? sumCfg.escalation_delay ?? 10,
         escalation_volume: Math.round((rawCfg.escalation_volume ?? sumCfg.escalation_volume ?? 0.9) * 100),
+        escalation_volume_fade_duration: rawCfg.escalation_volume_fade_duration ?? sumCfg.escalation_volume_fade_duration ?? 30,
         escalation_light_entities: Array.isArray(rawCfg.escalation_light_entities)
           ? rawCfg.escalation_light_entities.join(", ")
           : "",
@@ -378,8 +375,6 @@ class SmartWakePanel extends HTMLElement {
         pre_alarm_light_entities: "",
         pre_alarm_light_start_brightness: 1,
         pre_alarm_light_end_brightness: 80,
-        pre_alarm_climate_entities: "",
-        pre_alarm_climate_temp_delta: 2.0,
         pre_alarm_cover_entities: "",
         pre_alarm_cover_position: 20,
         pre_alarm_script_entity: "",
@@ -398,6 +393,7 @@ class SmartWakePanel extends HTMLElement {
         escalation_enabled: true,
         escalation_delay: 10,
         escalation_volume: 90,
+        escalation_volume_fade_duration: 30,
         escalation_light_entities: "",
         escalation_light_brightness: 100,
         escalation_light_cold_white: true,
@@ -464,8 +460,6 @@ class SmartWakePanel extends HTMLElement {
     if (getVal("f_pre_alarm_light_entities") !== undefined) this._editConfig.pre_alarm_light_entities = getVal("f_pre_alarm_light_entities");
     if (getVal("f_pre_alarm_light_start_brightness") !== undefined) this._editConfig.pre_alarm_light_start_brightness = getVal("f_pre_alarm_light_start_brightness");
     if (getVal("f_pre_alarm_light_end_brightness") !== undefined) this._editConfig.pre_alarm_light_end_brightness = getVal("f_pre_alarm_light_end_brightness");
-    if (getVal("f_pre_alarm_climate_entities") !== undefined) this._editConfig.pre_alarm_climate_entities = getVal("f_pre_alarm_climate_entities");
-    if (getVal("f_pre_alarm_climate_temp_delta") !== undefined) this._editConfig.pre_alarm_climate_temp_delta = getVal("f_pre_alarm_climate_temp_delta");
     if (getVal("f_pre_alarm_cover_entities") !== undefined) this._editConfig.pre_alarm_cover_entities = getVal("f_pre_alarm_cover_entities");
     if (getVal("f_pre_alarm_cover_position") !== undefined) this._editConfig.pre_alarm_cover_position = getVal("f_pre_alarm_cover_position");
     if (getVal("f_pre_alarm_script_entity") !== undefined) this._editConfig.pre_alarm_script_entity = getVal("f_pre_alarm_script_entity");
@@ -486,6 +480,7 @@ class SmartWakePanel extends HTMLElement {
     if (getChecked("f_escalation_enabled") !== undefined) this._editConfig.escalation_enabled = getChecked("f_escalation_enabled");
     if (getVal("f_escalation_delay") !== undefined) this._editConfig.escalation_delay = getVal("f_escalation_delay");
     if (getVal("f_escalation_volume") !== undefined) this._editConfig.escalation_volume = getVal("f_escalation_volume");
+    if (getVal("f_escalation_volume_fade_duration") !== undefined) this._editConfig.escalation_volume_fade_duration = getVal("f_escalation_volume_fade_duration");
     if (getChecked("f_escalation_light_cold_white") !== undefined) this._editConfig.escalation_light_cold_white = getChecked("f_escalation_light_cold_white");
     if (getVal("f_escalation_light_entities") !== undefined) this._editConfig.escalation_light_entities = getVal("f_escalation_light_entities");
     if (getVal("f_escalation_cover_position") !== undefined) this._editConfig.escalation_cover_position = getVal("f_escalation_cover_position");
@@ -541,8 +536,6 @@ class SmartWakePanel extends HTMLElement {
         pre_alarm_light_entities: toList(this._editConfig.pre_alarm_light_entities),
         pre_alarm_light_start_brightness: parseInt(this._editConfig.pre_alarm_light_start_brightness, 10) || 1,
         pre_alarm_light_end_brightness: parseInt(this._editConfig.pre_alarm_light_end_brightness, 10) || 80,
-        pre_alarm_climate_entities: toList(this._editConfig.pre_alarm_climate_entities),
-        pre_alarm_climate_temp_delta: parseFloat(this._editConfig.pre_alarm_climate_temp_delta) || 2.0,
         pre_alarm_cover_entities: toList(this._editConfig.pre_alarm_cover_entities),
         pre_alarm_cover_position: parseInt(this._editConfig.pre_alarm_cover_position, 10) || 20,
         pre_alarm_script_entity: this._editConfig.pre_alarm_script_entity || null,
@@ -561,6 +554,7 @@ class SmartWakePanel extends HTMLElement {
         escalation_enabled: Boolean(this._editConfig.escalation_enabled),
         escalation_delay: parseInt(this._editConfig.escalation_delay, 10) || 10,
         escalation_volume: (parseInt(this._editConfig.escalation_volume, 10) || 90) / 100,
+        escalation_volume_fade_duration: parseInt(this._editConfig.escalation_volume_fade_duration, 10) ?? 30,
         escalation_light_entities: toList(this._editConfig.escalation_light_entities),
         escalation_light_brightness: parseInt(this._editConfig.escalation_light_brightness, 10) || 100,
         escalation_light_cold_white: Boolean(this._editConfig.escalation_light_cold_white),
@@ -844,7 +838,48 @@ class SmartWakePanel extends HTMLElement {
       .filter(Boolean);
 
     if (parts.length === 0) {
-      chipsContainer.innerHTML = "";
+      if (chipsContainer.children.length > 0) {
+        chipsContainer.innerHTML = "";
+      }
+      return;
+    }
+
+    // Check if same entities are already rendered to avoid rebuilding DOM & flickering
+    const existingChips = Array.from(chipsContainer.querySelectorAll(".entity-chip"));
+    const existingIds = existingChips.map((c) => c.getAttribute("data-entity-id"));
+    const sameList =
+      existingIds.length === parts.length &&
+      existingIds.every((id, idx) => id === parts[idx]);
+
+    if (sameList) {
+      // Update text and verification state in-place without touching DOM tree or listeners
+      parts.forEach((entId, idx) => {
+        const chip = existingChips[idx];
+        const stateObj = this._hass && this._hass.states ? this._hass.states[entId] : null;
+        const stateSpan = chip.querySelector(".entity-chip-state");
+        if (stateObj) {
+          const newState = this._formatEntityState(stateObj);
+          if (stateSpan && stateSpan.textContent !== newState) {
+            stateSpan.textContent = newState;
+          }
+          if (chip.classList.contains("unverified")) {
+            chip.classList.remove("unverified");
+            const iconSpan = chip.querySelector(".entity-chip-icon");
+            if (iconSpan) iconSpan.textContent = this._getEntityDomainIcon(entId, stateObj.attributes);
+            const nameSpan = chip.querySelector(".entity-chip-name");
+            if (nameSpan) nameSpan.textContent = stateObj.attributes?.friendly_name || entId;
+          }
+        } else {
+          if (!chip.classList.contains("unverified")) {
+            chip.classList.add("unverified");
+            const iconSpan = chip.querySelector(".entity-chip-icon");
+            if (iconSpan) iconSpan.textContent = "⚠️";
+          }
+          if (stateSpan && stateSpan.textContent !== "Nicht in HA gefunden") {
+            stateSpan.textContent = "Nicht in HA gefunden";
+          }
+        }
+      });
       return;
     }
 
@@ -1901,12 +1936,6 @@ class SmartWakePanel extends HTMLElement {
           font-size: 11px;
           color: #e1f5fe;
           user-select: none;
-          animation: chipFadeIn 0.15s ease-out;
-        }
-
-        @keyframes chipFadeIn {
-          from { opacity: 0; transform: scale(0.95); }
-          to { opacity: 1; transform: scale(1); }
         }
 
         .entity-chip.unverified {
@@ -2183,7 +2212,7 @@ class SmartWakePanel extends HTMLElement {
               <div class="test-choice-content">
                 <div class="test-choice-title">Phase 1: Pre-Alarm starten</div>
                 <div class="test-choice-desc">
-                  Startet sanftes Licht, Jalousien & Heizung (${alarm.pre_alarm_duration} Min.) und wechselt danach automatisch zum Hauptalarm.
+                  Startet sanftes Licht & Jalousien (${alarm.pre_alarm_duration} Min.) und wechselt danach automatisch zum Hauptalarm.
                 </div>
               </div>
               <button class="btn-primary" style="align-self: center; white-space: nowrap; pointer-events: none;">Starten</button>
@@ -2403,7 +2432,7 @@ class SmartWakePanel extends HTMLElement {
           <div class="timeline-item">
             <div class="timeline-time">+${cfg.escalation_delay || 10}m</div>
             <div class="timeline-dot p3"></div>
-            <div class="timeline-desc">Phase 3: Eskalation (Volles Licht 100%, Audio ${Math.round((cfg.escalation_volume || 0.9) * 100)}%)</div>
+            <div class="timeline-desc">Phase 3: Eskalation (Volles Licht 100%, sanfter Audio-Anstieg auf ${Math.round((cfg.escalation_volume || 0.9) * 100)}%)</div>
           </div>
         </div>
 
@@ -2656,7 +2685,7 @@ class SmartWakePanel extends HTMLElement {
           <div class="form-checkbox-row">
             <div class="form-checkbox-label">
               <span>Phase 1 (Pre-Alarm / Sanftes Wecken) aktivieren</span>
-              <span class="form-hint">Startet sanft vor der Weckzeit mit Licht und Heizung</span>
+              <span class="form-hint">Startet sanft vor der Weckzeit mit Licht und Rollos</span>
             </div>
             <label class="switch-toggle">
               <input type="checkbox" id="f_pre_alarm_enabled" ${cfg.pre_alarm_enabled ? "checked" : ""}>
@@ -2684,15 +2713,7 @@ class SmartWakePanel extends HTMLElement {
             </div>
           </div>
 
-          <div class="form-section-title">Heizung & Rollos</div>
-          <div class="form-row">
-            ${this._renderEntityField("f_pre_alarm_climate_entities", "Klima / Thermostat-Entities", cfg.pre_alarm_climate_entities, "climate.schlafzimmer", "Thermostate zum sanften Anheben der Raumtemperatur", "climate", true)}
-            <div class="form-group">
-              <label class="form-label" for="f_pre_alarm_climate_temp_delta">Temperaturanhebung (°C)</label>
-              <input class="form-input" id="f_pre_alarm_climate_temp_delta" type="number" step="0.5" value="${cfg.pre_alarm_climate_temp_delta ?? 2.0}" />
-            </div>
-          </div>
-
+          <div class="form-section-title">Rollos & Jalousien</div>
           <div class="form-row">
             ${this._renderEntityField("f_pre_alarm_cover_entities", "Rollos / Jalousien Entities", cfg.pre_alarm_cover_entities, "cover.schlafzimmer", "Z. B. 20% für sanftes Kippen der Lamellen", "cover", true)}
             <div class="form-group">
@@ -2790,6 +2811,11 @@ class SmartWakePanel extends HTMLElement {
             <div class="form-group">
               <label class="form-label" for="f_escalation_volume">Eskalations-Lautstärke (%)</label>
               <input class="form-input" id="f_escalation_volume" type="number" min="50" max="100" value="${cfg.escalation_volume ?? 90}" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="f_escalation_volume_fade_duration">Sanfter Lautstärkeanstieg (Sekunden)</label>
+              <input class="form-input" id="f_escalation_volume_fade_duration" type="number" min="0" max="120" value="${cfg.escalation_volume_fade_duration ?? 30}" />
+              <span class="form-hint">Dauer für sanftes Hochfahren (z. B. 30s)</span>
             </div>
           </div>
 

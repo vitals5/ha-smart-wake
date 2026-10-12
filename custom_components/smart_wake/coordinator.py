@@ -100,6 +100,7 @@ from .const import (
     CONF_ESCALATION_LIGHT_ENTITIES,
     CONF_ESCALATION_SCRIPT_ENTITY,
     CONF_ESCALATION_VOLUME,
+    CONF_ESCALATION_VOLUME_FADE_DURATION,
     CONF_MAIN_AUDIO_CONTENT_ID,
     CONF_MAIN_AUDIO_CONTENT_TYPE,
     CONF_MAIN_AUDIO_FADE_DURATION,
@@ -114,8 +115,6 @@ from .const import (
     CONF_NAME,
     CONF_PERSON_ENTITIES,
     CONF_PERSON_HOME_REQUIRED,
-    CONF_PRE_ALARM_CLIMATE_ENTITIES,
-    CONF_PRE_ALARM_CLIMATE_TEMP_DELTA,
     CONF_PRE_ALARM_COVER_ENTITIES,
     CONF_PRE_ALARM_COVER_POSITION,
     CONF_PRE_ALARM_DURATION,
@@ -146,6 +145,7 @@ from .const import (
     DEFAULT_ESCALATION_LIGHT_BRIGHTNESS,
     DEFAULT_ESCALATION_LIGHT_COLD_WHITE,
     DEFAULT_ESCALATION_VOLUME,
+    DEFAULT_ESCALATION_VOLUME_FADE_DURATION,
     DEFAULT_MAIN_AUDIO_CONTENT_TYPE,
     DEFAULT_MAIN_AUDIO_FADE_DURATION,
     DEFAULT_MAIN_AUDIO_FADE_IN,
@@ -155,7 +155,6 @@ from .const import (
     DEFAULT_MAX_SNOOZE_COUNT,
     DEFAULT_NAME,
     DEFAULT_PERSON_HOME_REQUIRED,
-    DEFAULT_PRE_ALARM_CLIMATE_TEMP_DELTA,
     DEFAULT_PRE_ALARM_COVER_POSITION,
     DEFAULT_PRE_ALARM_DURATION,
     DEFAULT_PRE_ALARM_ENABLED,
@@ -1010,31 +1009,6 @@ class SmartWakeAlarm:
             except Exception as err:
                 _LOGGER.debug("Pre-alarm light service call failed on %s: %s", l_ent, err)
 
-        # Heating delta (+2°C)
-        climates = self._config.get(CONF_PRE_ALARM_CLIMATE_ENTITIES, [])
-        if isinstance(climates, str):
-            climates = [climates]
-
-        delta = float(
-            self._config.get(
-                CONF_PRE_ALARM_CLIMATE_TEMP_DELTA, DEFAULT_PRE_ALARM_CLIMATE_TEMP_DELTA
-            )
-        )
-        for c_ent in climates:
-            try:
-                cur_state = self.hass.states.get(c_ent) if hasattr(self.hass, "states") else None
-                cur_temp = float(
-                    getattr(cur_state, "attributes", {}).get("temperature", 20.0)
-                ) if cur_state else 20.0
-                await self.hass.services.async_call(
-                    "climate",
-                    "set_temperature",
-                    {"entity_id": c_ent, "temperature": cur_temp + delta},
-                    blocking=False,
-                )
-            except Exception as err:
-                _LOGGER.debug("Pre-alarm climate call failed on %s: %s", c_ent, err)
-
         # Covers tilt (20%)
         covers = self._config.get(CONF_PRE_ALARM_COVER_ENTITIES, [])
         if isinstance(covers, str):
@@ -1127,7 +1101,7 @@ class SmartWakeAlarm:
 
     async def _execute_escalation_actions(self) -> None:
         """Execute Phase 3: Max audio volume 90%, 100% cold white light, open covers."""
-        # 1. Media Player volume escalation
+        # 1. Media Player volume escalation (gentle volume rise)
         media_players = self._config.get(CONF_MAIN_MEDIA_PLAYER_ENTITIES, [])
         if isinstance(media_players, str):
             media_players = [media_players]
@@ -1135,16 +1109,47 @@ class SmartWakeAlarm:
         esc_vol = float(
             self._config.get(CONF_ESCALATION_VOLUME, DEFAULT_ESCALATION_VOLUME)
         )
+        fade_duration = 3 if self._is_dry_run else int(
+            self._config.get(
+                CONF_ESCALATION_VOLUME_FADE_DURATION,
+                DEFAULT_ESCALATION_VOLUME_FADE_DURATION,
+            )
+        )
+
         for mp_ent in media_players:
-            try:
-                await self.hass.services.async_call(
-                    "media_player",
-                    "volume_set",
-                    {"entity_id": mp_ent, "volume_level": esc_vol},
-                    blocking=False,
+            start_vol = 0.5
+            state = self.hass.states.get(mp_ent) if hasattr(self.hass, "states") else None
+            if state and "volume_level" in getattr(state, "attributes", {}) and state.attributes["volume_level"] is not None:
+                try:
+                    start_vol = float(state.attributes["volume_level"])
+                except (ValueError, TypeError):
+                    start_vol = float(
+                        self._config.get(
+                            CONF_MAIN_AUDIO_TARGET_VOLUME, DEFAULT_MAIN_AUDIO_TARGET_VOLUME
+                        )
+                    )
+            else:
+                start_vol = float(
+                    self._config.get(
+                        CONF_MAIN_AUDIO_TARGET_VOLUME, DEFAULT_MAIN_AUDIO_TARGET_VOLUME
+                    )
                 )
-            except Exception as err:
-                _LOGGER.debug("Escalation volume call failed on %s: %s", mp_ent, err)
+
+            if fade_duration > 0 and esc_vol > start_vol:
+                task = self.hass.async_create_task(
+                    self._fade_volume(mp_ent, start_vol, esc_vol, fade_duration)
+                )
+                self._fade_tasks.append(task)
+            else:
+                try:
+                    await self.hass.services.async_call(
+                        "media_player",
+                        "volume_set",
+                        {"entity_id": mp_ent, "volume_level": esc_vol},
+                        blocking=False,
+                    )
+                except Exception as err:
+                    _LOGGER.debug("Escalation volume call failed on %s: %s", mp_ent, err)
 
         # 2. Lighting: 100% Cold White
         esc_lights = self._config.get(

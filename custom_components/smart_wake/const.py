@@ -5,7 +5,7 @@ import os
 
 DOMAIN = "smart_wake"
 NAME = "Smart Wake"
-VERSION = "1.0.5"
+VERSION = "1.0.6"
 
 # Static assets and frontend paths
 URL_BASE = "/smart_wake_frontend"
@@ -99,8 +99,6 @@ CONF_PRE_ALARM_DURATION = "pre_alarm_duration"  # minutes
 CONF_PRE_ALARM_LIGHT_ENTITIES = "pre_alarm_light_entities"
 CONF_PRE_ALARM_LIGHT_START_BRIGHTNESS = "pre_alarm_light_start_brightness"
 CONF_PRE_ALARM_LIGHT_END_BRIGHTNESS = "pre_alarm_light_end_brightness"
-CONF_PRE_ALARM_CLIMATE_ENTITIES = "pre_alarm_climate_entities"
-CONF_PRE_ALARM_CLIMATE_TEMP_DELTA = "pre_alarm_climate_temp_delta"
 CONF_PRE_ALARM_COVER_ENTITIES = "pre_alarm_cover_entities"
 CONF_PRE_ALARM_COVER_POSITION = "pre_alarm_cover_position"
 CONF_PRE_ALARM_SCRIPT_ENTITY = "pre_alarm_script_entity"
@@ -121,6 +119,7 @@ CONF_MAIN_SCRIPT_ENTITY = "main_script_entity"
 CONF_ESCALATION_ENABLED = "escalation_enabled"
 CONF_ESCALATION_DELAY = "escalation_delay"  # minutes after main alarm
 CONF_ESCALATION_VOLUME = "escalation_volume"  # 0.0 - 1.0
+CONF_ESCALATION_VOLUME_FADE_DURATION = "escalation_volume_fade_duration"  # seconds for smooth volume rise
 CONF_ESCALATION_LIGHT_ENTITIES = "escalation_light_entities"
 CONF_ESCALATION_LIGHT_BRIGHTNESS = "escalation_light_brightness"
 CONF_ESCALATION_LIGHT_COLD_WHITE = "escalation_light_cold_white"
@@ -157,7 +156,6 @@ DEFAULT_PRE_ALARM_ENABLED = True
 DEFAULT_PRE_ALARM_DURATION = 15
 DEFAULT_PRE_ALARM_LIGHT_START_BRIGHTNESS = 1
 DEFAULT_PRE_ALARM_LIGHT_END_BRIGHTNESS = 80
-DEFAULT_PRE_ALARM_CLIMATE_TEMP_DELTA = 2.0
 DEFAULT_PRE_ALARM_COVER_POSITION = 20
 
 DEFAULT_MAIN_AUDIO_FADE_IN = True
@@ -170,6 +168,7 @@ DEFAULT_MAIN_TTS_MESSAGE = "Guten Morgen! Es ist {time} Uhr."
 DEFAULT_ESCALATION_ENABLED = True
 DEFAULT_ESCALATION_DELAY = 10
 DEFAULT_ESCALATION_VOLUME = 0.9
+DEFAULT_ESCALATION_VOLUME_FADE_DURATION = 30
 DEFAULT_ESCALATION_LIGHT_BRIGHTNESS = 100
 DEFAULT_ESCALATION_LIGHT_COLD_WHITE = True
 DEFAULT_ESCALATION_COVER_POSITION = 100

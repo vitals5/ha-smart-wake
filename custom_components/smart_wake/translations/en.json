@@ -67,8 +67,6 @@
           "pre_alarm_light_entities": "Wake-up lights (light.*)",
           "pre_alarm_light_start_brightness": "Start light brightness (%)",
           "pre_alarm_light_end_brightness": "Target light brightness (%)",
-          "pre_alarm_climate_entities": "Thermostats / Climate (climate.*)",
-          "pre_alarm_climate_temp_delta": "Temperature increase (°C)",
           "pre_alarm_cover_entities": "Covers / Blinds (cover.*)",
           "pre_alarm_cover_position": "Tilt / open blinds to (%)",
           "pre_alarm_script_entity": "Custom pre-alarm script (script.*)"
@@ -93,6 +91,7 @@
           "escalation_enabled": "Enable anti-oversleep escalation",
           "escalation_delay": "Delay after main alarm (minutes)",
           "escalation_volume": "Escalation volume (e.g. 0.9 = 90%)",
+          "escalation_volume_fade_duration": "Gentle volume rise duration (seconds)",
           "escalation_light_entities": "Room main lights (light.*)",
           "escalation_light_brightness": "Escalation brightness (%)",
           "escalation_cover_entities": "Covers (cover.*)",

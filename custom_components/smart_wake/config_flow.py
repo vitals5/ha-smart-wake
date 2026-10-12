@@ -119,6 +119,7 @@ from .const import (
     CONF_ESCALATION_LIGHT_ENTITIES,
     CONF_ESCALATION_SCRIPT_ENTITY,
     CONF_ESCALATION_VOLUME,
+    CONF_ESCALATION_VOLUME_FADE_DURATION,
     CONF_MAIN_AUDIO_CONTENT_ID,
     CONF_MAIN_AUDIO_CONTENT_TYPE,
     CONF_MAIN_AUDIO_FADE_DURATION,
@@ -133,8 +134,6 @@ from .const import (
     CONF_NAME,
     CONF_PERSON_ENTITIES,
     CONF_PERSON_HOME_REQUIRED,
-    CONF_PRE_ALARM_CLIMATE_ENTITIES,
-    CONF_PRE_ALARM_CLIMATE_TEMP_DELTA,
     CONF_PRE_ALARM_COVER_ENTITIES,
     CONF_PRE_ALARM_COVER_POSITION,
     CONF_PRE_ALARM_DURATION,
@@ -164,6 +163,7 @@ from .const import (
     DEFAULT_ESCALATION_LIGHT_BRIGHTNESS,
     DEFAULT_ESCALATION_LIGHT_COLD_WHITE,
     DEFAULT_ESCALATION_VOLUME,
+    DEFAULT_ESCALATION_VOLUME_FADE_DURATION,
     DEFAULT_MAIN_AUDIO_CONTENT_TYPE,
     DEFAULT_MAIN_AUDIO_FADE_DURATION,
     DEFAULT_MAIN_AUDIO_FADE_IN,
@@ -173,7 +173,6 @@ from .const import (
     DEFAULT_MAX_SNOOZE_COUNT,
     DEFAULT_NAME,
     DEFAULT_PERSON_HOME_REQUIRED,
-    DEFAULT_PRE_ALARM_CLIMATE_TEMP_DELTA,
     DEFAULT_PRE_ALARM_COVER_POSITION,
     DEFAULT_PRE_ALARM_DURATION,
     DEFAULT_PRE_ALARM_ENABLED,
@@ -488,21 +487,6 @@ class SmartWakeOptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                 ): vol.All(vol.Coerce(int), vol.Range(min=1, max=100)),
                 vol.Optional(
-                    CONF_PRE_ALARM_CLIMATE_ENTITIES,
-                    description={"suggested_value": self._options.get(CONF_PRE_ALARM_CLIMATE_ENTITIES, [])},
-                ): EntitySelector(
-                    EntitySelectorConfig(domain="climate", multiple=True)
-                ) if EntitySelector else list,
-                vol.Required(
-                    CONF_PRE_ALARM_CLIMATE_TEMP_DELTA,
-                    default=float(
-                        self._options.get(
-                            CONF_PRE_ALARM_CLIMATE_TEMP_DELTA,
-                            DEFAULT_PRE_ALARM_CLIMATE_TEMP_DELTA,
-                        )
-                    ),
-                ): vol.Coerce(float),
-                vol.Optional(
                     CONF_PRE_ALARM_COVER_ENTITIES,
                     description={"suggested_value": self._options.get(CONF_PRE_ALARM_COVER_ENTITIES, [])},
                 ): EntitySelector(
@@ -629,6 +613,15 @@ class SmartWakeOptionsFlowHandler(config_entries.OptionsFlow):
                         )
                     ),
                 ): vol.All(vol.Coerce(float), vol.Range(min=0.1, max=1.0)),
+                vol.Required(
+                    CONF_ESCALATION_VOLUME_FADE_DURATION,
+                    default=int(
+                        self._options.get(
+                            CONF_ESCALATION_VOLUME_FADE_DURATION,
+                            DEFAULT_ESCALATION_VOLUME_FADE_DURATION,
+                        )
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=120)),
                 vol.Optional(
                     CONF_ESCALATION_LIGHT_ENTITIES,
                     description={"suggested_value": self._options.get(CONF_ESCALATION_LIGHT_ENTITIES, [])},

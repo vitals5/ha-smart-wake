@@ -105,7 +105,6 @@ Jede Wecker-Instanz durchläuft drei aufeinanderfolgende Phasen:
 ### Phase 1: Pre-Alarm (Sanftes Wecken)
 * Startet $X$ Minuten vor der Weckzeit (Standard: 15 Minuten).
 * **Licht-Transition:** Dimmbare Lampen (`light.*`) fahren über die gesamte Vor-Alarm-Dauer sanft von warmem Rot (1 %) bis zu tageslichtweißem Gelb (80 %) hoch.
-* **Heizung:** Hebt die Zieltemperatur des Raumes (`climate.*`) um z. B. +2 °C an.
 * **Rollos / Jalousien:** Kippt die Lamellen auf 20 % an (`cover.*`).
 * **Skripte:** Führt optionale HA-Skripte (`script.*`) aus.
 
@@ -117,7 +116,7 @@ Jede Wecker-Instanz durchläuft drei aufeinanderfolgende Phasen:
 
 ### Phase 3: Eskalations-Modus (Anti-Verschlaf-Schutz)
 * Wenn nach $Y$ Minuten (Standard: 10 Minuten) weder Schlummern noch Quittieren betätigt wurde:
-  * **Audio-Lautstärke:** Schrittweise Erhöhung auf bis zu 90 %.
+  * **Audio-Lautstärke:** Sanfter, kontinuierlicher Anstieg der Lautstärke auf bis zu 90 % (konfigurierbare Fade-Dauer, z. B. 30 Sekunden).
   * **Volle Beleuchtung:** Raum-Hauptbeleuchtung schaltet auf 100 % Kaltweiß (6500 K).
   * **Rollos:** Fahren zu 100 % komplett nach oben.
 

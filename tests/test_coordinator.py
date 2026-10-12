@@ -23,7 +23,7 @@ from custom_components.smart_wake.const import (
     CONF_NAME,
     CONF_PERSON_ENTITIES,
     CONF_PERSON_HOME_REQUIRED,
-    CONF_PRE_ALARM_CLIMATE_ENTITIES,
+    CONF_ESCALATION_VOLUME_FADE_DURATION,
     CONF_PRE_ALARM_COVER_ENTITIES,
     CONF_PRE_ALARM_DURATION,
     CONF_PRE_ALARM_ENABLED,
@@ -154,12 +154,12 @@ class TestSmartWakeCoordinator(unittest.IsolatedAsyncioTestCase):
         """Test 3-phase execution: Pre-Alarm, Main Alarm, Escalation."""
         cfg = dict(self.config)
         cfg[CONF_PRE_ALARM_LIGHT_ENTITIES] = ["light.bedside"]
-        cfg[CONF_PRE_ALARM_CLIMATE_ENTITIES] = ["climate.bedroom"]
         cfg[CONF_PRE_ALARM_COVER_ENTITIES] = ["cover.bedroom"]
         cfg[CONF_MAIN_MEDIA_PLAYER_ENTITIES] = ["media_player.bedroom"]
         cfg[CONF_MAIN_AUDIO_CONTENT_ID] = "http://stream.radio.de"
         cfg[CONF_MAIN_TTS_ENABLED] = True
         cfg[CONF_ESCALATION_LIGHT_ENTITIES] = ["light.bedroom_main"]
+        cfg[CONF_ESCALATION_VOLUME_FADE_DURATION] = 10
 
         alarm = SmartWakeAlarm(self.hass, "test_phases", cfg)
 
@@ -176,10 +176,14 @@ class TestSmartWakeCoordinator(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(alarm.status, STATUS_RINGING)
         self.assertEqual(alarm.active_phase, PHASE_MAIN_ALARM)
 
-        # 3. Start Escalation
+        # 3. Start Escalation (gentle volume rise)
         await alarm.async_start_escalation()
         self.assertEqual(alarm.status, STATUS_RINGING)
         self.assertEqual(alarm.active_phase, PHASE_ESCALATION)
+        # Verify light turned on cold white
+        self.hass.services.async_call.assert_any_call(
+            "light", "turn_on", {"entity_id": "light.bedroom_main", "brightness_pct": 100, "color_temp_kelvin": 6500}, blocking=False
+        )
 
     async def test_snooze_and_max_snooze_limit(self) -> None:
         """Test snooze logic and enforcement of max snooze count limit."""

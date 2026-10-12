@@ -67,8 +67,6 @@
           "pre_alarm_light_entities": "Aufwach-Lichter (light.*)",
           "pre_alarm_light_start_brightness": "Start-Helligkeit Licht (%)",
           "pre_alarm_light_end_brightness": "Ziel-Helligkeit Licht (%)",
-          "pre_alarm_climate_entities": "Thermostate / Heizung (climate.*)",
-          "pre_alarm_climate_temp_delta": "Temperaturerhöhung (°C)",
           "pre_alarm_cover_entities": "Rollos / Jalousien (cover.*)",
           "pre_alarm_cover_position": "Rollos ankippen / öffnen auf (%)",
           "pre_alarm_script_entity": "Zusätzliches Skript ausführen (script.*)"
@@ -93,6 +91,7 @@
           "escalation_enabled": "Eskalations-Schutz aktivieren",
           "escalation_delay": "Verzögerung nach Hauptalarm (Minuten)",
           "escalation_volume": "Eskalations-Lautstärke (z.B. 0.9 = 90%)",
+          "escalation_volume_fade_duration": "Sanfter Lautstärkeanstieg Dauer (Sekunden)",
           "escalation_light_entities": "Raum-Hauptbeleuchtung (light.*)",
           "escalation_light_brightness": "Helligkeit Eskalation (%)",
           "escalation_cover_entities": "Rollos (cover.*)",
