@@ -106,27 +106,54 @@ class SmartWakePanel extends HTMLElement {
     }
   }
 
+  _showToast(msg, duration = 4000) {
+    if (!this.shadowRoot) return;
+    let toast = this.shadowRoot.getElementById("smartWakeToast");
+    if (!toast) {
+      toast = document.createElement("div");
+      toast.id = "smartWakeToast";
+      toast.className = "sw-toast";
+      this.shadowRoot.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.classList.add("visible");
+    if (this._toastTimeout) clearTimeout(this._toastTimeout);
+    this._toastTimeout = setTimeout(() => {
+      toast.classList.remove("visible");
+    }, duration);
+  }
+
   async _snoozeAlarm(alarmId) {
     if (!this._hass) return;
     try {
-      await this._hass.callWS({
+      const res = await this._hass.callWS({
         type: "smart_wake/snooze",
         alarm_id: alarmId,
       });
       await this._fetchAlarms();
+      if (res && res.snoozed) {
+        this._showToast("💤 Wecker pausiert und schlummert...");
+      } else {
+        this._showToast("⚠️ Schlummern nicht möglich oder Maximum erreicht!", 4000);
+      }
     } catch (err) {
-      alert("Schlummern nicht möglich oder Limit erreicht!");
+      this._showToast("⚠️ Schlummern nicht möglich oder Maximum erreicht!", 4000);
     }
   }
 
   async _dismissAlarm(alarmId) {
     if (!this._hass) return;
     try {
-      await this._hass.callWS({
+      const res = await this._hass.callWS({
         type: "smart_wake/dismiss",
         alarm_id: alarmId,
       });
       await this._fetchAlarms();
+      if (res && res.snoozed) {
+        this._showToast("🛡️ Anti-Cheat aktiv: Quittierung wirkt als Schlummern, bis Aufsteh-Beweis (Bewegungsmelder, Leistungsmesser oder NFC) erbracht ist!", 5000);
+      } else if (res && res.dismissed) {
+        this._showToast("🛑 Wecker erfolgreich beendet und quittiert!", 3000);
+      }
     } catch (err) {
       console.error("Dismiss failed:", err);
     }
@@ -1517,6 +1544,44 @@ class SmartWakePanel extends HTMLElement {
           animation: modalFadeIn 0.3s ease-out;
         }
 
+        .snooze-anti-cheat-banner {
+          background: rgba(255, 152, 0, 0.12);
+          border: 1px solid rgba(255, 152, 0, 0.4);
+          border-left: 4px solid #ff9800;
+          border-radius: 8px;
+          padding: 10px 14px;
+          margin-top: 10px;
+          font-size: 12px;
+          color: #ffe0b2;
+          line-height: 1.4;
+        }
+
+        .sw-toast {
+          position: fixed;
+          bottom: 24px;
+          right: 24px;
+          background: #1e293b;
+          color: #f1f5f9;
+          border: 1px solid #3b82f6;
+          border-left: 4px solid #3b82f6;
+          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+          border-radius: 8px;
+          padding: 12px 18px;
+          font-size: 13px;
+          font-weight: 500;
+          max-width: 440px;
+          z-index: 99999;
+          opacity: 0;
+          transform: translateY(12px);
+          transition: opacity 0.25s ease, transform 0.25s ease;
+          pointer-events: none;
+        }
+
+        .sw-toast.visible {
+          opacity: 1;
+          transform: translateY(0);
+        }
+
         button.btn-full-test {
           background: rgba(229, 57, 53, 0.18) !important;
           color: #ff8a80 !important;
@@ -2442,6 +2507,26 @@ class SmartWakePanel extends HTMLElement {
         </div>
 
         ${
+          alarm.status === "snoozed"
+            ? `
+            <div class="snooze-anti-cheat-banner">
+              <div style="font-weight: 600; font-size: 13px; color: #ffb74d; display: flex; align-items: center; justify-content: space-between;">
+                <span>💤 Schlummermodus aktiv (${alarm.countdown_text})</span>
+                <span class="badge" style="background: #fb8c00; font-size: 10px; padding: 2px 7px;">SNOOZE ${alarm.snooze_count}/${alarm.max_snooze_count}</span>
+              </div>
+              <div style="font-size: 12px; margin-top: 5px; color: #ffe0b2;">
+                ${
+                  alarm.has_anti_cheat
+                    ? "🛡️ <b>Anti-Cheat aktiv:</b> Quittierung wirkt als Schlummern. Endgültiges Beenden erfolgt automatisch bei Aufsteh-Beweis (Bad-Bewegungsmelder, Kaffeemaschine oder NFC-Tag)."
+                    : "Der Wecker pausiert vorübergehend und weckt nach Ablauf der Schlummerzeit erneut."
+                }
+              </div>
+            </div>
+            `
+            : ""
+        }
+
+        ${
           isFullTest
             ? `
             <div class="full-test-banner">
@@ -2450,8 +2535,8 @@ class SmartWakePanel extends HTMLElement {
                 <span class="badge" style="background: #e53935; font-size: 10px; padding: 2px 7px;">LIVE TEST</span>
               </div>
               <div style="font-size: 12px; color: #cfd8dc; margin-top: 5px; line-height: 1.4;">
-                Aktive Phase: <b>${alarm.active_phase === "pre_alarm" ? "Phase 1 (Pre-Alarm)" : alarm.active_phase === "escalation" ? "Phase 3 (Eskalation)" : "Phase 2 (Hauptalarm)"}</b><br>
-                <span>💡 Alle Audio- & Licht-Trigger laufen in Echtzeit. Teste Quittierung per Button, Bewegungsmelder, Leistungsmesser oder NFC!</span>
+                Aktiver Zustand: <b>${alarm.status === "snoozed" ? "💤 Schlummert (Snooze)" : alarm.active_phase === "pre_alarm" ? "Phase 1 (Pre-Alarm)" : alarm.active_phase === "escalation" ? "Phase 3 (Eskalation)" : "Phase 2 (Hauptalarm)"}</b><br>
+                <span>💡 Alle Audio- & Licht-Trigger laufen in Echtzeit. Teste Schlummern oder Quittierung per Button, Bewegungsmelder, Leistungsmesser oder NFC!</span>
               </div>
             </div>
             `
@@ -2501,8 +2586,8 @@ class SmartWakePanel extends HTMLElement {
             ${
               isRinging
                 ? `
-                <button class="btn-action btn-snooze" id="snooze-${alarm.id}">
-                  💤 Schlummern
+                <button class="btn-action btn-snooze" id="snooze-${alarm.id}" ${alarm.status === "snoozed" ? "disabled style='opacity: 0.6; cursor: not-allowed;'" : ""}>
+                  💤 ${alarm.status === "snoozed" ? "Schlummert..." : "Schlummern"}
                 </button>
                 <button class="btn-action btn-dismiss" id="dismiss-${alarm.id}">
                   🛑 Quittieren

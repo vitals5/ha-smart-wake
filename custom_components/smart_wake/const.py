@@ -5,7 +5,7 @@ import os
 
 DOMAIN = "smart_wake"
 NAME = "Smart Wake"
-VERSION = "1.0.6"
+VERSION = "1.0.7"
 
 # Static assets and frontend paths
 URL_BASE = "/smart_wake_frontend"
@@ -176,6 +176,7 @@ DEFAULT_ESCALATION_COVER_POSITION = 100
 DEFAULT_SNOOZE_DURATION = 9
 DEFAULT_MAX_SNOOZE_COUNT = 3
 DEFAULT_DISMISS_POWER_THRESHOLD = 10.0
+DEFAULT_FULL_TEST_SNOOZE_SECONDS = 30
 
 # Event and Signal definitions
 SIGNAL_SMART_WAKE_UPDATED = "smart_wake_updated_{}"
@@ -188,6 +189,7 @@ EVENT_SMART_WAKE_ESCALATION_STARTED = "smart_wake_escalation_started"
 EVENT_SMART_WAKE_SNOOZED = "smart_wake_snoozed"
 EVENT_SMART_WAKE_DISMISSED = "smart_wake_dismissed"
 EVENT_SMART_WAKE_SKIPPED = "smart_wake_skipped"
+EVENT_SMART_WAKE_ANTI_CHEAT_BLOCKED = "smart_wake_anti_cheat_blocked"
 
 # Dry run test duration
 TEST_DRY_RUN_TOTAL_SECONDS = 30

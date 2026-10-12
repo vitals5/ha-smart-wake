@@ -126,6 +126,10 @@ class SmartWakeStatusSensor(SmartWakeBaseSensor):
             "active_phase": self._alarm.active_phase,
             "skip_reason": self._alarm.skip_reason if self._alarm.status == STATUS_SKIPPED else None,
             "is_dry_run": self._alarm.is_dry_run,
+            "is_full_test": getattr(self._alarm, "is_full_test", False),
+            "anti_cheat_active": self._alarm.has_anti_cheat_configured(),
+            "anti_cheat_fulfilled": self._alarm.is_anti_cheat_fulfilled(),
+            "snooze_until": self._alarm.snooze_until.isoformat() if self._alarm.snooze_until else None,
         }
 
 
@@ -141,7 +145,9 @@ class SmartWakeNextAlarmSensor(SmartWakeBaseSensor):
 
     @property
     def native_value(self) -> datetime | None:
-        """Return next alarm timestamp."""
+        """Return next alarm timestamp (or snooze resume time if snoozed)."""
+        if self._alarm.status == STATUS_SNOOZED and self._alarm.snooze_until:
+            return self._alarm.snooze_until
         return self._alarm.next_alarm
 
     @property
@@ -153,6 +159,7 @@ class SmartWakeNextAlarmSensor(SmartWakeBaseSensor):
             "dynamic_offset_minutes": self._alarm.dynamic_offset_minutes,
             "offset_reasons": self._alarm.offset_reasons,
             "active_days": self._alarm.days,
+            "snooze_until": self._alarm.snooze_until.isoformat() if self._alarm.snooze_until else None,
         }
 
 

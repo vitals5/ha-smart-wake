@@ -168,7 +168,10 @@ class SmartWakeDismissHandler(intent.IntentHandler):
             response.async_set_speech("Es wurde kein Smart Wake Wecker gefunden.")
             return response
 
-        await alarm.async_dismiss()
+        dismissed = await alarm.async_dismiss()
         response = intent_obj.create_response()
-        response.async_set_speech(f"Guten Morgen! {alarm.name} wurde beendet.")
+        if dismissed:
+            response.async_set_speech(f"Guten Morgen! {alarm.name} wurde beendet.")
+        else:
+            response.async_set_speech(f"Anti-Cheat aktiv! {alarm.name} schlummert weiter, bis die Aufsteh-Bedingung erfüllt ist.")
         return response

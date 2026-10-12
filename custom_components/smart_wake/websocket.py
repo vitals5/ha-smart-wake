@@ -70,6 +70,7 @@ from .const import (
     CONF_WORKDAY_ENTITY,
     CONF_WORKDAY_ONLY,
     DOMAIN,
+    STATUS_SNOOZED,
 )
 from .coordinator import SmartWakeAlarm
 
@@ -100,7 +101,16 @@ def _serialize_alarm(alarm: SmartWakeAlarm) -> dict[str, Any]:
     countdown_secs: float = 0.0
     countdown_text = "Deaktiviert"
 
-    if alarm.enabled and alarm.next_alarm:
+    if alarm.status == STATUS_SNOOZED and alarm.snooze_until:
+        snooze_secs = max(0.0, (alarm.snooze_until - now).total_seconds())
+        mins = int(snooze_secs // 60)
+        secs = int(snooze_secs % 60)
+        if mins > 0:
+            countdown_text = f"Schlummert (noch {mins}m {secs}s)"
+        else:
+            countdown_text = f"Schlummert (noch {secs}s)"
+        countdown_secs = snooze_secs
+    elif alarm.enabled and alarm.next_alarm:
         countdown_secs = max(0.0, (alarm.next_alarm - now).total_seconds())
         countdown_text = _format_countdown(countdown_secs)
 
@@ -115,6 +125,9 @@ def _serialize_alarm(alarm: SmartWakeAlarm) -> dict[str, Any]:
         "active_phase": alarm.active_phase,
         "next_alarm": alarm.next_alarm.isoformat() if alarm.next_alarm else None,
         "pre_alarm_time": alarm.pre_alarm_time.isoformat() if alarm.pre_alarm_time else None,
+        "snooze_until": alarm.snooze_until.isoformat() if alarm.snooze_until else None,
+        "has_anti_cheat": alarm.has_anti_cheat_configured(),
+        "anti_cheat_fulfilled": alarm.is_anti_cheat_fulfilled(),
         "countdown_seconds": countdown_secs,
         "countdown_text": countdown_text,
         "snooze_count": alarm.snooze_count,
@@ -204,6 +217,7 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
         vol.Required("type"): "smart_wake/start_full_test",
         vol.Required("alarm_id"): str,
         vol.Optional("start_from_pre_alarm", default=True): bool,
+        vol.Optional("snooze_seconds", default=30): vol.Coerce(int),
     })
     @websocket_api.async_response
     async def ws_start_full_test(
@@ -215,7 +229,10 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
             connection.send_error(msg["id"], "alarm_not_found", "Alarm instance not found")
             return
 
-        await alarm.async_start_full_test(start_from_pre_alarm=msg.get("start_from_pre_alarm", True))
+        await alarm.async_start_full_test(
+            start_from_pre_alarm=msg.get("start_from_pre_alarm", True),
+            snooze_seconds=msg.get("snooze_seconds", 30),
+        )
         connection.send_result(msg["id"], {"success": True, "alarm": _serialize_alarm(alarm)})
 
     # 3. smart_wake/stop_test
@@ -260,6 +277,7 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
     @websocket_api.websocket_command({
         vol.Required("type"): "smart_wake/dismiss",
         vol.Required("alarm_id"): str,
+        vol.Optional("forced", default=False): bool,
     })
     @websocket_api.async_response
     async def ws_dismiss(
@@ -270,8 +288,16 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
         if not alarm:
             connection.send_error(msg["id"], "alarm_not_found", "Alarm instance not found")
             return
-        await alarm.async_dismiss()
-        connection.send_result(msg["id"], {"success": True, "alarm": _serialize_alarm(alarm)})
+        dismissed = await alarm.async_dismiss(forced=msg.get("forced", False))
+        connection.send_result(
+            msg["id"],
+            {
+                "success": True,
+                "dismissed": dismissed,
+                "snoozed": not dismissed and alarm.status == STATUS_SNOOZED,
+                "alarm": _serialize_alarm(alarm),
+            },
+        )
 
     # 6. smart_wake/toggle
     @websocket_api.websocket_command({

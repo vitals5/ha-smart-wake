@@ -124,16 +124,19 @@ Jede Wecker-Instanz durchläuft drei aufeinanderfolgende Phasen:
 
 ## 4. Quittierung, Schlummern & Anti-Cheat
 
-### Quittierungs-Trigger (Dismiss)
-Das Beenden des Alarms erfolgt nicht zwingend über das Smartphone, sondern über reale Smart-Home-Ereignisse:
-* **Hardware-Taster:** Zigbee/Z-Wave-Schalter am Nachttisch (z. B. Einfachklick = Schlummern, Doppelklick = Quittieren).
-* **Anti-Cheat Präsenzmelder:** Bewegungsmelder im Badezimmer oder in der Küche meldet Präsenz (Beweis für erfolgreiches Aufstehen).
-* **NFC-Tag:** NFC-Tag am Badezimmerspiegel oder an der Kaffeemaschine wird gescannt.
-* **Leistungssensor:** Die Leistungsaufnahme der Kaffeemaschine oder des Badezimmerlichts überschreitet den Grenzwert (z. B. > 10 W).
+### Intelligente Anti-Cheat Quittierung
+* **Aufsteh-Beweis vor Quittierung:** Sind Anti-Cheat Bedingungen hinterlegt, wirkt jeder Quittierungsversuch (über UI, Dashboard, Button-Entität, Voice Assist oder Hardware-Taster) zunächst **wie Schlummern**, bis der reale Aufsteh-Beweis erbracht ist.
+* **Bedingungslose Quittierung:** Sind *keine* Anti-Cheat Bedingungen eingetragen, ist die Quittierung sofort endgültig wirksam.
+* **Endgültige Quittierung:** Sobald mindestens eine der konfigurierten Anti-Cheat Bedingungen erfüllt ist:
+  * **Bewegungsmelder:** Präsenzmelder im Badezimmer oder in der Küche meldet Bewegung (`binary_sensor.*`).
+  * **NFC-Tag:** Physischer NFC-Tag am Badezimmerspiegel oder an der Kaffeemaschine wird gescannt (`tag_scanned`).
+  * **Leistungssensor:** Leistungsaufnahme (z. B. Kaffeemaschine oder Badezimmerlicht) überschreitet den Watt-Schwellenwert (`sensor.*` > X W).
+  wird der Wecker endgültig quittiert und beendet.
 
 ### Schlummer-Funktion (Snooze)
 * Einstellbare Schlummerdauer (z. B. 5, 8, 9, 10 Minuten).
-* **Snooze-Limit:** Nach Erreichen der maximalen Schlummer-Anzahl wird der Schlummer-Button blockiert – es bleibt nur noch der Quittier-Zwang!
+* **Snooze-Limit:** Nach Erreichen der maximalen Schlummer-Anzahl wird der Schlummer-Button blockiert – ohne Erfüllung der Anti-Cheat Bedingung klingelt der Wecker weiter!
+* **Echtzeit-Testmodus:** Sowohl Schlummern als auch Quittieren (inklusive Anti-Cheat Verifikation) lassen sich im **vollen Testlauf** gefahrlos testen (mit beschleunigtem 30-Sekunden-Schlummerfenster).
 
 ---
 

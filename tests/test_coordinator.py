@@ -12,6 +12,10 @@ from custom_components.smart_wake.const import (
     CONF_CALENDAR_BEHAVIOR,
     CONF_CALENDAR_ENTITY,
     CONF_DAYS,
+    CONF_DISMISS_MOTION_ENTITIES,
+    CONF_DISMISS_NFC_TAGS,
+    CONF_DISMISS_POWER_SENSOR,
+    CONF_DISMISS_POWER_THRESHOLD,
     CONF_ENABLED,
     CONF_ESCALATION_DELAY,
     CONF_ESCALATION_ENABLED,
@@ -270,6 +274,103 @@ class TestSmartWakeCoordinator(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(alarm.is_full_test)
         self.assertFalse(alarm.is_testing)
 
+    async def test_anti_cheat_dismiss_diverts_to_snooze_when_unfulfilled(self) -> None:
+        """Test dismiss diverts to snooze when Anti-Cheat motion condition is not met."""
+        motion_state = MagicMock()
+        motion_state.state = "off"
+        self.hass.states.get = MagicMock(return_value=motion_state)
+
+        cfg = dict(self.config)
+        cfg[CONF_DISMISS_MOTION_ENTITIES] = ["binary_sensor.bath_motion"]
+        alarm = SmartWakeAlarm(self.hass, "test_ac_divert", cfg)
+        alarm._status = STATUS_RINGING
+
+        # Dismiss attempt while still in bed (motion is off)
+        dismissed = await alarm.async_dismiss()
+        self.assertFalse(dismissed)
+        self.assertEqual(alarm.status, STATUS_SNOOZED)
+        self.assertEqual(alarm.snooze_count, 1)
+
+        # Another dismiss attempt while still in bed and already snoozed
+        dismissed2 = await alarm.async_dismiss()
+        self.assertFalse(dismissed2)
+        self.assertEqual(alarm.status, STATUS_SNOOZED)
+        self.assertEqual(alarm.snooze_count, 1)
+
+    async def test_anti_cheat_dismiss_when_fulfilled(self) -> None:
+        """Test dismiss finally succeeds when Anti-Cheat motion condition is fulfilled."""
+        motion_state = MagicMock()
+        motion_state.state = "on"
+        self.hass.states.get = MagicMock(return_value=motion_state)
+
+        cfg = dict(self.config)
+        cfg[CONF_DISMISS_MOTION_ENTITIES] = ["binary_sensor.bath_motion"]
+        alarm = SmartWakeAlarm(self.hass, "test_ac_fulfill", cfg)
+        alarm._status = STATUS_RINGING
+
+        # Motion is already ON (user got out of bed to bathroom)
+        dismissed = await alarm.async_dismiss()
+        self.assertTrue(dismissed)
+        self.assertEqual(alarm.status, STATUS_IDLE)
+        self.assertEqual(alarm.snooze_count, 0)
+
+    async def test_anti_cheat_power_sensor_gating(self) -> None:
+        """Test dismiss with power sensor below and above threshold."""
+        power_state = MagicMock()
+        power_state.state = "4.2"  # Below threshold
+        self.hass.states.get = MagicMock(return_value=power_state)
+
+        cfg = dict(self.config)
+        cfg[CONF_DISMISS_POWER_SENSOR] = "sensor.coffee_power"
+        cfg[CONF_DISMISS_POWER_THRESHOLD] = 10.0
+        alarm = SmartWakeAlarm(self.hass, "test_ac_power", cfg)
+        alarm._status = STATUS_RINGING
+
+        # Below 10W -> Diverts to snooze
+        dismissed = await alarm.async_dismiss()
+        self.assertFalse(dismissed)
+        self.assertEqual(alarm.status, STATUS_SNOOZED)
+
+        # Coffee machine turned on: 45.0W -> Now dismiss succeeds!
+        power_state.state = "45.0"
+        dismissed2 = await alarm.async_dismiss()
+        self.assertTrue(dismissed2)
+        self.assertEqual(alarm.status, STATUS_IDLE)
+
+    async def test_full_test_snooze_and_quittieren_with_anti_cheat(self) -> None:
+        """Test testing Snooze and Quittieren (incl. Anti-Cheat) in full test mode."""
+        motion_state = MagicMock()
+        motion_state.state = "off"
+        self.hass.states.get = MagicMock(return_value=motion_state)
+
+        cfg = dict(self.config)
+        cfg[CONF_DISMISS_MOTION_ENTITIES] = ["binary_sensor.bath_motion"]
+        alarm = SmartWakeAlarm(self.hass, "test_full_ac", cfg)
+
+        # 1. Start full test directly into Main Alarm
+        await alarm.async_start_full_test(start_from_pre_alarm=False, snooze_seconds=30)
+        self.assertTrue(alarm.is_full_test)
+        self.assertEqual(alarm.status, STATUS_RINGING)
+
+        # 2. Test manual Snooze in full test mode
+        snooze_res = await alarm.async_snooze()
+        self.assertTrue(snooze_res)
+        self.assertEqual(alarm.status, STATUS_SNOOZED)
+        self.assertTrue(alarm.is_full_test)
+        self.assertIsNotNone(alarm.snooze_until)
+
+        # 3. Test Quittieren while Anti-Cheat is not met -> must stay snoozed
+        dismiss_res = await alarm.async_dismiss()
+        self.assertFalse(dismiss_res)
+        self.assertEqual(alarm.status, STATUS_SNOOZED)
+        self.assertTrue(alarm.is_full_test)
+
+        # 4. Anti-cheat sensor fulfills (motion detected in bathroom)
+        motion_state.state = "on"
+        dismiss_res2 = await alarm.async_dismiss()
+        self.assertTrue(dismiss_res2)
+        self.assertEqual(alarm.status, STATUS_IDLE)
+        self.assertFalse(alarm.is_full_test)
 
 
 if __name__ == "__main__":

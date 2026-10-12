@@ -61,6 +61,7 @@ SCHEMA_SNOOZE = vol.Schema(
 SCHEMA_DISMISS = vol.Schema(
     {
         vol.Optional("alarm_id"): str,
+        vol.Optional("forced", default=False): cv.boolean if hasattr(cv, "boolean") else bool,
     }
 )
 
@@ -69,6 +70,7 @@ SCHEMA_TEST_ALARM = vol.Schema(
         vol.Optional("alarm_id"): str,
         vol.Optional("mode", default="dry_run"): vol.In(["dry_run", "full"]),
         vol.Optional("start_from_pre_alarm", default=True): bool,
+        vol.Optional("snooze_seconds", default=30): vol.Coerce(int),
     }
 )
 
@@ -76,6 +78,7 @@ SCHEMA_START_FULL_TEST = vol.Schema(
     {
         vol.Optional("alarm_id"): str,
         vol.Optional("start_from_pre_alarm", default=True): bool,
+        vol.Optional("snooze_seconds", default=30): vol.Coerce(int),
     }
 )
 
@@ -136,19 +139,24 @@ def async_register_services(hass: HomeAssistant) -> None:
     async def handle_dismiss(call: ServiceCall) -> None:
         """Handle dismiss service call."""
         alarm_id = call.data.get("alarm_id")
+        forced = call.data.get("forced", False)
         alarms = _get_target_alarms(hass, alarm_id)
         for alarm in alarms:
-            await alarm.async_dismiss()
+            await alarm.async_dismiss(forced=forced)
 
     async def handle_test_alarm(call: ServiceCall) -> None:
         """Handle test alarm call (dry-run or full)."""
         alarm_id = call.data.get("alarm_id")
         mode = call.data.get("mode", "dry_run")
         start_pre = call.data.get("start_from_pre_alarm", True)
+        snooze_sec = call.data.get("snooze_seconds", 30)
         alarms = _get_target_alarms(hass, alarm_id)
         for alarm in alarms:
             if mode == "full":
-                await alarm.async_start_full_test(start_from_pre_alarm=start_pre)
+                await alarm.async_start_full_test(
+                    start_from_pre_alarm=start_pre,
+                    snooze_seconds=snooze_sec,
+                )
             else:
                 await alarm.async_start_dry_run()
 
@@ -156,9 +164,13 @@ def async_register_services(hass: HomeAssistant) -> None:
         """Handle start full real-time test run."""
         alarm_id = call.data.get("alarm_id")
         start_pre = call.data.get("start_from_pre_alarm", True)
+        snooze_sec = call.data.get("snooze_seconds", 30)
         alarms = _get_target_alarms(hass, alarm_id)
         for alarm in alarms:
-            await alarm.async_start_full_test(start_from_pre_alarm=start_pre)
+            await alarm.async_start_full_test(
+                start_from_pre_alarm=start_pre,
+                snooze_seconds=snooze_sec,
+            )
 
     async def handle_stop_test(call: ServiceCall) -> None:
         """Handle stop test call (stops dry run or full test)."""

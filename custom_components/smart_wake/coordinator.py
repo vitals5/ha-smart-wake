@@ -168,8 +168,10 @@ from .const import (
     DEFAULT_WEATHER_TEMP_OFFSET,
     DEFAULT_WEATHER_TEMP_THRESHOLD,
     DEFAULT_WORKDAY_ONLY,
+    DEFAULT_FULL_TEST_SNOOZE_SECONDS,
     DOMAIN,
     EVENT_SMART_WAKE_ALARM_TRIGGERED,
+    EVENT_SMART_WAKE_ANTI_CHEAT_BLOCKED,
     EVENT_SMART_WAKE_DISMISSED,
     EVENT_SMART_WAKE_ESCALATION_STARTED,
     EVENT_SMART_WAKE_PRE_ALARM_STARTED,
@@ -236,6 +238,11 @@ class SmartWakeAlarm:
         self._is_dry_run: bool = False
         self._dry_run_progress: int = 0
         self._is_full_test: bool = False
+        self._full_test_snooze_seconds: int | None = None
+
+        # Anti-cheat tracking
+        self._anti_cheat_nfc_scanned: bool = False
+        self._snooze_until: datetime | None = None
 
     # -------------------------------------------------------------------------
     # Properties
@@ -339,6 +346,86 @@ class SmartWakeAlarm:
     def is_testing(self) -> bool:
         """Return whether any test run (dry-run or full test) is active."""
         return self._is_dry_run or self._is_full_test
+
+    @property
+    def snooze_until(self) -> datetime | None:
+        """Return when snooze ends, if snoozed."""
+        return self._snooze_until
+
+    def has_anti_cheat_configured(self) -> bool:
+        """Return True if any anti-cheat condition is configured."""
+        motion = self._config.get(CONF_DISMISS_MOTION_ENTITIES)
+        if motion:
+            if isinstance(motion, list) and any(str(m).strip() for m in motion):
+                return True
+            elif isinstance(motion, str) and motion.strip():
+                return True
+
+        power = self._config.get(CONF_DISMISS_POWER_SENSOR)
+        if power and str(power).strip():
+            return True
+
+        nfc = self._config.get(CONF_DISMISS_NFC_TAGS)
+        if nfc:
+            if isinstance(nfc, list) and any(str(t).strip() for t in nfc):
+                return True
+            elif isinstance(nfc, str) and nfc.strip():
+                return True
+
+        return False
+
+    def is_anti_cheat_fulfilled(self) -> bool:
+        """Check if any configured anti-cheat condition is currently met."""
+        if not hasattr(self.hass, "states"):
+            return False
+
+        # 1. Motion sensors (bathroom / kitchen)
+        motion_entities = self._config.get(CONF_DISMISS_MOTION_ENTITIES, [])
+        if isinstance(motion_entities, str):
+            motion_entities = [m.strip() for m in motion_entities.split(",") if m.strip()]
+        for ent_id in motion_entities:
+            if not ent_id:
+                continue
+            st = self.hass.states.get(ent_id)
+            if st and str(st.state).lower() in (STATE_ON, "on", "detected", "motion", "true"):
+                _LOGGER.info(
+                    "Smart Wake [%s] Anti-Cheat verified via motion sensor %s (state: %s)",
+                    self._name,
+                    ent_id,
+                    st.state,
+                )
+                return True
+
+        # 2. Power sensor (coffee machine / bathroom light > threshold)
+        power_sensor = self._config.get(CONF_DISMISS_POWER_SENSOR)
+        if power_sensor and str(power_sensor).strip():
+            st = self.hass.states.get(str(power_sensor).strip())
+            if st:
+                try:
+                    threshold = float(
+                        self._config.get(
+                            CONF_DISMISS_POWER_THRESHOLD, DEFAULT_DISMISS_POWER_THRESHOLD
+                        )
+                    )
+                    val = float(st.state)
+                    if val >= threshold:
+                        _LOGGER.info(
+                            "Smart Wake [%s] Anti-Cheat verified via power sensor %s (%.1fW >= %.1fW)",
+                            self._name,
+                            power_sensor,
+                            val,
+                            threshold,
+                        )
+                        return True
+                except (ValueError, TypeError):
+                    pass
+
+        # 3. NFC Tag scanned recently during this cycle
+        if getattr(self, "_anti_cheat_nfc_scanned", False):
+            _LOGGER.info("Smart Wake [%s] Anti-Cheat verified via NFC tag scan", self._name)
+            return True
+
+        return False
 
     @property
     def config(self) -> dict[str, Any]:
@@ -731,36 +818,112 @@ class SmartWakeAlarm:
         self._cancel_fade_tasks()
         await self._stop_media_players()
 
-        duration = custom_duration or self.snooze_duration
+        if custom_duration is not None:
+            delay_seconds = custom_duration * 60
+            display_duration = custom_duration
+        elif self._is_full_test and self._full_test_snooze_seconds is not None:
+            delay_seconds = self._full_test_snooze_seconds
+            display_duration = max(1, self._full_test_snooze_seconds // 60)
+        else:
+            delay_seconds = self.snooze_duration * 60
+            display_duration = self.snooze_duration
+
+        now = dt_util.now()
+        self._snooze_until = now + timedelta(seconds=delay_seconds)
         self._status = STATUS_SNOOZED
         self._active_phase = PHASE_NONE
         _LOGGER.info(
-            "Smart Wake [%s] snoozed for %d minutes (Count: %d/%d)",
+            "Smart Wake [%s] snoozed for %s (Count: %d/%d)",
             self._name,
-            duration,
+            f"{delay_seconds}s" if (self._is_full_test and self._full_test_snooze_seconds) else f"{display_duration}m",
             self._snooze_count,
             self.max_snooze_count,
         )
 
+        # Keep active hardware, motion and NFC listeners attached during snooze
+        self._setup_active_alarm_listeners()
+
         self._fire_event(
             EVENT_SMART_WAKE_SNOOZED,
-            {"snooze_count": self._snooze_count, "duration": duration},
+            {
+                "snooze_count": self._snooze_count,
+                "duration": display_duration,
+                "duration_seconds": delay_seconds,
+                "snooze_until": self._snooze_until.isoformat() if self._snooze_until else None,
+                "is_full_test": self._is_full_test,
+            },
         )
         self._notify_update()
 
         @callback
         def _resume_after_snooze(_point: Any = None) -> None:
+            self._snooze_until = None
             self.hass.async_create_task(self.async_start_main_alarm())
 
         self._unsub_phase_timer = async_call_later(
-            self.hass, duration * 60, _resume_after_snooze
+            self.hass, delay_seconds, _resume_after_snooze
         )
         return True
 
-    async def async_dismiss(self) -> None:
-        """Dismiss active alarm or pre-alarm, restoring normal state."""
+    async def async_dismiss(self, forced: bool = False) -> bool:
+        """Dismiss active alarm or pre-alarm, restoring normal state.
+
+        If Anti-Cheat conditions are configured and forced is False:
+        - If anti-cheat is currently fulfilled: final dismissal.
+        - If anti-cheat is NOT fulfilled: acts as snooze!
+        """
+        if self._status in (STATUS_IDLE, STATUS_DISMISSED, STATUS_SKIPPED):
+            return True
+
+        # Check Anti-Cheat gating if not forced
+        if not forced and self.has_anti_cheat_configured():
+            if self.is_anti_cheat_fulfilled():
+                _LOGGER.info(
+                    "Smart Wake [%s] Anti-Cheat conditions verified! Proceeding with final dismissal.",
+                    self._name,
+                )
+            else:
+                _LOGGER.warning(
+                    "Smart Wake [%s] Anti-Cheat conditions NOT fulfilled! Dismiss action acting as Snooze.",
+                    self._name,
+                )
+                self._fire_event(
+                    EVENT_SMART_WAKE_ANTI_CHEAT_BLOCKED,
+                    {
+                        "action": "diverted_to_snooze",
+                        "status": self._status,
+                        "snooze_count": self._snooze_count,
+                        "max_snooze_count": self.max_snooze_count,
+                    },
+                )
+                # If already snoozed, remain snoozed
+                if self._status == STATUS_SNOOZED:
+                    _LOGGER.info(
+                        "Smart Wake [%s] already snoozed; remains snoozed until Anti-Cheat condition met.",
+                        self._name,
+                    )
+                    return False
+
+                # Divert to snooze
+                snoozed = await self.async_snooze()
+                if not snoozed:
+                    _LOGGER.warning(
+                        "Smart Wake [%s] Anti-Cheat not fulfilled and maximum snooze limit (%d) reached! Dismiss blocked, alarm continues.",
+                        self._name,
+                        self.max_snooze_count,
+                    )
+                return False
+
+        # Final dismissal
+        return await self._dismiss_final()
+
+    async def _dismiss_final(self) -> bool:
+        """Execute final dismissal, cleaning up state and timers."""
         _LOGGER.info("Smart Wake [%s] dismissed", self._name)
         self._is_full_test = False
+        self._full_test_snooze_seconds = None
+        self._anti_cheat_nfc_scanned = False
+        self._snooze_until = None
         self._cancel_phase_timer()
         self._cancel_fade_tasks()
         self._cleanup_listeners()
@@ -776,6 +939,7 @@ class SmartWakeAlarm:
         await self.async_recalculate_schedule()
         self._status = STATUS_IDLE
         self._notify_update()
+        return True
 
     def set_skip_next(self, skip: bool = True) -> None:
         """Mark next alarm cycle to be skipped."""
@@ -795,7 +959,7 @@ class SmartWakeAlarm:
         self._config[CONF_ENABLED] = enabled
         if not enabled:
             if self._status in (STATUS_RINGING, STATUS_PRE_ALARM, STATUS_SNOOZED):
-                await self.async_dismiss()
+                await self.async_dismiss(forced=True)
             self._status = STATUS_IDLE
             self._active_phase = PHASE_NONE
         await self.async_recalculate_schedule()
@@ -818,14 +982,14 @@ class SmartWakeAlarm:
             @callback
             def _on_motion(event: Event) -> None:
                 new_state = getattr(event.data, "get", lambda _: None)("new_state") if hasattr(event, "data") else None
-                state_val = getattr(new_state, "state", "") if new_state else ""
-                if state_val == STATE_ON:
+                state_val = str(getattr(new_state, "state", "")).lower() if new_state else ""
+                if state_val in (STATE_ON, "on", "detected", "motion"):
                     _LOGGER.info(
                         "Smart Wake [%s] motion anti-cheat triggered via %s -> Dismissing",
                         self._name,
                         getattr(new_state, "entity_id", "motion_sensor"),
                     )
-                    self.hass.async_create_task(self.async_dismiss())
+                    self.hass.async_create_task(self.async_dismiss(forced=True))
 
             try:
                 unsub = async_track_state_change_event(
@@ -858,7 +1022,7 @@ class SmartWakeAlarm:
                             val,
                             threshold,
                         )
-                        self.hass.async_create_task(self.async_dismiss())
+                        self.hass.async_create_task(self.async_dismiss(forced=True))
                 except (ValueError, TypeError):
                     pass
 
@@ -880,12 +1044,13 @@ class SmartWakeAlarm:
             def _on_tag_scanned(event: Event) -> None:
                 tag_id = event.data.get("tag_id") if hasattr(event, "data") else None
                 if tag_id and tag_id in nfc_tags:
+                    self._anti_cheat_nfc_scanned = True
                     _LOGGER.info(
                         "Smart Wake [%s] NFC Tag [%s] scanned -> Dismissing",
                         self._name,
                         tag_id,
                     )
-                    self.hass.async_create_task(self.async_dismiss())
+                    self.hass.async_create_task(self.async_dismiss(forced=True))
 
             try:
                 unsub = self.hass.bus.async_listen("tag_scanned", _on_tag_scanned)
@@ -908,9 +1073,9 @@ class SmartWakeAlarm:
                 val = getattr(new_state, "state", "").lower()
                 event_type = str(getattr(new_state, "attributes", {}).get("event_type", "")).lower()
 
-                # Dismiss button
+                # Dismiss button (undergoes Anti-Cheat gating)
                 if ent_id == btn_dismiss or "double" in val or "double" in event_type:
-                    self.hass.async_create_task(self.async_dismiss())
+                    self.hass.async_create_task(self.async_dismiss(forced=False))
                 # Snooze button
                 elif ent_id == btn_snooze or "single" in val or "single" in event_type or val == STATE_ON:
                     self.hass.async_create_task(self.async_snooze())
@@ -1361,6 +1526,7 @@ class SmartWakeAlarm:
         self,
         start_from_pre_alarm: bool | None = None,
         pre_alarm_seconds: int | None = None,
+        snooze_seconds: int | None = DEFAULT_FULL_TEST_SNOOZE_SECONDS,
     ) -> None:
         """Start a full, real-time test run of the alarm sequence."""
         if self._is_dry_run:
@@ -1368,6 +1534,8 @@ class SmartWakeAlarm:
 
         _LOGGER.info("Starting full real-time test run for Smart Wake [%s]", self._name)
         self._is_full_test = True
+        self._full_test_snooze_seconds = snooze_seconds
+        self._anti_cheat_nfc_scanned = False
         self._snooze_count = 0
 
         pre_alarm_enabled = self._config.get(CONF_PRE_ALARM_ENABLED, DEFAULT_PRE_ALARM_ENABLED)
@@ -1408,7 +1576,9 @@ class SmartWakeAlarm:
 
         if self._is_full_test or self._status in (STATUS_RINGING, STATUS_PRE_ALARM, STATUS_SNOOZED):
             self._is_full_test = False
-            await self.async_dismiss()
+            self._full_test_snooze_seconds = None
+            self._anti_cheat_nfc_scanned = False
+            await self.async_dismiss(forced=True)
 
     # -------------------------------------------------------------------------
     # Helper & Notification Utilities
