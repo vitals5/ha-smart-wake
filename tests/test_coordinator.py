@@ -233,6 +233,32 @@ class TestSmartWakeCoordinator(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(alarm.active_phase, PHASE_NONE)
         self.assertEqual(alarm.snooze_count, 0)
 
+    async def test_set_time_updates_schedule_and_fires_event(self) -> None:
+        """Test changing alarm time recalculates schedule and fires status changed event."""
+        mock_entry = MagicMock()
+        mock_entry.options = {"time": "06:30"}
+        self.hass.config_entries.async_get_entry = MagicMock(return_value=mock_entry)
+
+        alarm = SmartWakeAlarm(self.hass, "test_set_time_entry", self.config)
+        self.assertEqual(alarm.time_str, "06:30")
+
+        self.hass.bus.async_fire.reset_mock()
+        await alarm.async_set_time("08:15")
+
+        self.assertEqual(alarm.time_str, "08:15")
+        self.assertEqual(alarm.config[CONF_TIME], "08:15")
+        self.hass.config_entries.async_update_entry.assert_called_with(
+            mock_entry, options={"time": "08:15"}
+        )
+
+        # Verify event was fired to bus so frontends receive real-time update
+        status_event_calls = [
+            c for c in self.hass.bus.async_fire.call_args_list
+            if c[0][0] == "smart_wake_status_changed"
+        ]
+        self.assertTrue(len(status_event_calls) >= 1)
+        self.assertEqual(status_event_calls[-1][0][1]["time"], "08:15")
+
     async def test_dry_run_test_mode(self) -> None:
         """Test 30s dry run mode."""
         alarm = SmartWakeAlarm(self.hass, "test_dry_run", self.config)

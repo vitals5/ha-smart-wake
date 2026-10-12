@@ -1155,16 +1155,40 @@ class SmartWakePanel extends HTMLElement {
     }
   }
 
+  _getAlarmSignature(a) {
+    if (!a) return "";
+    const cfg = a.config_summary || {};
+    return [
+      a.id,
+      a.name,
+      a.time,
+      a.enabled,
+      a.status,
+      a.active_phase,
+      (a.days || []).join(","),
+      a.snooze_count,
+      a.snooze_duration,
+      a.max_snooze_count,
+      a.pre_alarm_duration,
+      a.pre_alarm_time,
+      a.next_alarm,
+      a.dynamic_offset_minutes,
+      a.is_testing,
+      a.is_full_test,
+      a.is_dry_run,
+      cfg.workday_only,
+      cfg.person_home_required,
+      cfg.escalation_delay,
+      cfg.escalation_volume,
+    ].join(":");
+  }
+
   _updateAlarmsData(newAlarms) {
     const oldAlarms = this._alarms || [];
-    this._alarms = newAlarms;
+    const oldSig = oldAlarms.map((a) => this._getAlarmSignature(a)).join("###");
+    const newSig = (newAlarms || []).map((a) => this._getAlarmSignature(a)).join("###");
 
-    const oldSig = oldAlarms
-      .map((a) => `${a.id}:${a.enabled}:${a.status}:${a.active_phase}:${a.is_testing}:${a.is_full_test}:${a.is_dry_run}:${a.snooze_count}`)
-      .join("|");
-    const newSig = newAlarms
-      .map((a) => `${a.id}:${a.enabled}:${a.status}:${a.active_phase}:${a.is_testing}:${a.is_full_test}:${a.is_dry_run}:${a.snooze_count}`)
-      .join("|");
+    this._alarms = newAlarms;
 
     if (oldSig !== newSig || !this._dashboardRendered) {
       this._renderDashboard();
@@ -1177,6 +1201,22 @@ class SmartWakePanel extends HTMLElement {
     if (!this.shadowRoot) return;
     this._updateCountdowns();
     this._alarms.forEach((alarm) => {
+      // Dynamic time updates
+      const timeEl = this.shadowRoot.getElementById(`time-${alarm.id}`);
+      if (timeEl) {
+        const text = `${alarm.time} Uhr`;
+        if (timeEl.textContent !== text) timeEl.textContent = text;
+      }
+      const tlP2 = this.shadowRoot.getElementById(`timeline-p2-${alarm.id}`);
+      if (tlP2 && tlP2.textContent !== alarm.time) {
+        tlP2.textContent = alarm.time;
+      }
+      const tlP1 = this.shadowRoot.getElementById(`timeline-p1-${alarm.id}`);
+      if (tlP1) {
+        const p1Time = this._formatTime(alarm.pre_alarm_time);
+        if (tlP1.textContent !== p1Time) tlP1.textContent = p1Time;
+      }
+
       if (alarm.is_dry_run) {
         const textEl = this.shadowRoot.getElementById(`dryrun-text-${alarm.id}`);
         const barEl = this.shadowRoot.getElementById(`dryrun-bar-${alarm.id}`);
@@ -1870,6 +1910,8 @@ class SmartWakePanel extends HTMLElement {
 
       this._closeSettingsModal();
       await this._fetchAlarms();
+      this._renderDashboard();
+      this._showToast("💾 Einstellungen erfolgreich gespeichert!", 3000);
     } catch (err) {
       console.error("Failed to save alarm settings:", err);
       alert("Fehler beim Speichern: " + (err.message || err));
@@ -1891,6 +1933,8 @@ class SmartWakePanel extends HTMLElement {
       });
       this._closeSettingsModal();
       await this._fetchAlarms();
+      this._renderDashboard();
+      this._showToast("🗑️ Wecker erfolgreich gelöscht!", 3000);
     } catch (err) {
       console.error("Failed to delete alarm:", err);
       alert("Fehler beim Löschen: " + (err.message || err));
@@ -2435,6 +2479,11 @@ class SmartWakePanel extends HTMLElement {
         btnEdit.onclick = () => this._openSettingsModal(alarm.id);
       }
 
+      const timeEl = this.shadowRoot.getElementById(`time-${alarm.id}`);
+      if (timeEl) {
+        timeEl.onclick = () => this._openSettingsModal(alarm.id);
+      }
+
       const btnFullTest = this.shadowRoot.getElementById(`full-test-${alarm.id}`);
       if (btnFullTest) {
         btnFullTest.onclick = () => {
@@ -2687,7 +2736,7 @@ class SmartWakePanel extends HTMLElement {
         </div>
 
         <div class="time-row">
-          <div class="big-time">${alarm.time} Uhr</div>
+          <div class="big-time" id="time-${alarm.id}" style="cursor: pointer;" title="Weckzeit ändern (Klicken öffnet Einstellungen)">${alarm.time} Uhr</div>
           <div class="countdown-chip" id="countdown-${alarm.id}">
             ⏳ ${alarm.countdown_text}
           </div>
@@ -2707,12 +2756,12 @@ class SmartWakePanel extends HTMLElement {
         <div class="timeline">
           <div class="timeline-title">Ablauf & Phasen</div>
           <div class="timeline-item">
-            <div class="timeline-time">${this._formatTime(alarm.pre_alarm_time)}</div>
+            <div class="timeline-time" id="timeline-p1-${alarm.id}">${this._formatTime(alarm.pre_alarm_time)}</div>
             <div class="timeline-dot p1"></div>
             <div class="timeline-desc">Phase 1: Pre-Alarm (${alarm.pre_alarm_duration} Min sanftes Erwachen)</div>
           </div>
           <div class="timeline-item">
-            <div class="timeline-time">${alarm.time}</div>
+            <div class="timeline-time" id="timeline-p2-${alarm.id}">${alarm.time}</div>
             <div class="timeline-dot p2"></div>
             <div class="timeline-desc">Phase 2: Hauptalarm (Audio Fade-in + TTS Morgenbriefing)</div>
           </div>

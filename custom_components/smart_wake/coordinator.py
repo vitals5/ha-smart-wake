@@ -990,12 +990,38 @@ class SmartWakeAlarm:
         """Set new target time and recalculate schedule."""
         self._time_str = new_time
         self._config[CONF_TIME] = new_time
+        if hasattr(self.hass, "config_entries") and hasattr(self.hass.config_entries, "async_get_entry"):
+            entry = self.hass.config_entries.async_get_entry(self.entry_id)
+            if entry:
+                new_options = dict(getattr(entry, "options", {}))
+                new_options[CONF_TIME] = new_time
+                self.hass.config_entries.async_update_entry(entry, options=new_options)
         await self.async_recalculate_schedule()
+        if hasattr(self.hass, "bus"):
+            try:
+                self.hass.bus.async_fire(
+                    EVENT_SMART_WAKE_STATUS_CHANGED,
+                    {
+                        "entry_id": self.entry_id,
+                        "name": self._name,
+                        "status": self._status,
+                        "active_phase": self._active_phase,
+                        "time": self._time_str,
+                    },
+                )
+            except Exception as err:
+                _LOGGER.debug("Could not fire status changed event: %s", err)
 
     async def async_set_enabled(self, enabled: bool) -> None:
         """Enable or disable alarm."""
         self._enabled = enabled
         self._config[CONF_ENABLED] = enabled
+        if hasattr(self.hass, "config_entries") and hasattr(self.hass.config_entries, "async_get_entry"):
+            entry = self.hass.config_entries.async_get_entry(self.entry_id)
+            if entry:
+                new_options = dict(getattr(entry, "options", {}))
+                new_options[CONF_ENABLED] = enabled
+                self.hass.config_entries.async_update_entry(entry, options=new_options)
         if not enabled:
             if self._status in (STATUS_RINGING, STATUS_PRE_ALARM, STATUS_SNOOZED):
                 await self.async_dismiss(forced=True)
@@ -1886,6 +1912,20 @@ class SmartWakeAlarm:
         """Broadcast state updates to entities and websocket subscribers."""
         async_dispatcher_send(self.hass, SIGNAL_SMART_WAKE_UPDATED.format(self.entry_id))
         async_dispatcher_send(self.hass, SIGNAL_SMART_WAKE_ALL_UPDATED)
+        if hasattr(self.hass, "bus") and not self._is_dry_run:
+            try:
+                self.hass.bus.async_fire(
+                    EVENT_SMART_WAKE_STATUS_CHANGED,
+                    {
+                        "entry_id": self.entry_id,
+                        "name": self._name,
+                        "status": self._status,
+                        "active_phase": self._active_phase,
+                        "time": self._time_str,
+                    },
+                )
+            except Exception as err:
+                _LOGGER.debug("Could not fire status changed event: %s", err)
 
     def _fire_event(self, event_type: str, extra: dict[str, Any] | None = None) -> None:
         """Fire a Home Assistant event on the event bus."""
