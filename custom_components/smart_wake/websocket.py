@@ -49,6 +49,7 @@ except Exception:
 from .const import (
     CONF_DAYS,
     CONF_DISMISS_BUTTON_ENTITY,
+    CONF_DISMISS_INPUT_BOOLEAN,
     CONF_DISMISS_MOTION_ENTITIES,
     CONF_DISMISS_NFC_TAGS,
     CONF_DISMISS_POWER_SENSOR,
@@ -58,6 +59,7 @@ from .const import (
     CONF_ESCALATION_VOLUME_FADE_DURATION,
     CONF_MAIN_AUDIO_CONTENT_ID,
     CONF_MAIN_MEDIA_PLAYER_ENTITIES,
+    CONF_MAIN_TTS_DELAY,
     CONF_MAIN_TTS_ENABLED,
     CONF_NAME,
     CONF_PERSON_ENTITIES,
@@ -69,6 +71,7 @@ from .const import (
     CONF_WEATHER_TEMP_ENTITY,
     CONF_WORKDAY_ENTITY,
     CONF_WORKDAY_ONLY,
+    DEFAULT_MAIN_TTS_DELAY,
     DOMAIN,
     STATUS_SNOOZED,
 )
@@ -153,6 +156,7 @@ def _serialize_alarm(alarm: SmartWakeAlarm) -> dict[str, Any]:
             "main_media_players": cfg.get(CONF_MAIN_MEDIA_PLAYER_ENTITIES, []),
             "main_audio_content": cfg.get(CONF_MAIN_AUDIO_CONTENT_ID),
             "main_tts_enabled": cfg.get(CONF_MAIN_TTS_ENABLED, False),
+            "main_tts_delay": cfg.get(CONF_MAIN_TTS_DELAY, DEFAULT_MAIN_TTS_DELAY),
             "escalation_delay": cfg.get(CONF_ESCALATION_DELAY, 10),
             "escalation_volume": cfg.get(CONF_ESCALATION_VOLUME, 0.9),
             "escalation_volume_fade_duration": cfg.get(CONF_ESCALATION_VOLUME_FADE_DURATION, 30),
@@ -160,6 +164,7 @@ def _serialize_alarm(alarm: SmartWakeAlarm) -> dict[str, Any]:
             "dismiss_motion": cfg.get(CONF_DISMISS_MOTION_ENTITIES, []),
             "dismiss_nfc": cfg.get(CONF_DISMISS_NFC_TAGS, []),
             "dismiss_power": cfg.get(CONF_DISMISS_POWER_SENSOR),
+            "dismiss_input_boolean": cfg.get(CONF_DISMISS_INPUT_BOOLEAN),
         },
     }
 

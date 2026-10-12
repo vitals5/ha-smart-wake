@@ -5,7 +5,7 @@ import os
 
 DOMAIN = "smart_wake"
 NAME = "Smart Wake"
-VERSION = "1.0.8"
+VERSION = "1.0.9"
 
 # Static assets and frontend paths
 URL_BASE = "/smart_wake_frontend"
@@ -113,6 +113,7 @@ CONF_MAIN_AUDIO_TARGET_VOLUME = "main_audio_target_volume"  # 0.0 - 1.0
 CONF_MAIN_TTS_ENABLED = "main_tts_enabled"
 CONF_MAIN_TTS_MESSAGE = "main_tts_message"
 CONF_MAIN_TTS_ENGINE = "main_tts_engine"
+CONF_MAIN_TTS_DELAY = "main_tts_delay"  # seconds after main alarm start
 CONF_MAIN_SCRIPT_ENTITY = "main_script_entity"
 
 # Phase 3: Escalation (Anti-Verschlaf-Schutz)
@@ -138,6 +139,7 @@ CONF_DISMISS_MOTION_ENTITIES = "dismiss_motion_entities"
 CONF_DISMISS_NFC_TAGS = "dismiss_nfc_tags"
 CONF_DISMISS_POWER_SENSOR = "dismiss_power_sensor"
 CONF_DISMISS_POWER_THRESHOLD = "dismiss_power_threshold"  # Watts
+CONF_DISMISS_INPUT_BOOLEAN = "dismiss_input_boolean"  # Input boolean entity
 
 # Default values
 DEFAULT_NAME = "Smart Wake"
@@ -164,6 +166,7 @@ DEFAULT_MAIN_AUDIO_TARGET_VOLUME = 0.5
 DEFAULT_MAIN_AUDIO_CONTENT_TYPE = "music"
 DEFAULT_MAIN_TTS_ENABLED = False
 DEFAULT_MAIN_TTS_MESSAGE = "Guten Morgen! Es ist {time} Uhr."
+DEFAULT_MAIN_TTS_DELAY = 15
 
 DEFAULT_ESCALATION_ENABLED = True
 DEFAULT_ESCALATION_DELAY = 10

@@ -12,6 +12,8 @@ from custom_components.smart_wake.const import (
     CONF_CALENDAR_BEHAVIOR,
     CONF_CALENDAR_ENTITY,
     CONF_DAYS,
+    CONF_DISMISS_BUTTON_ENTITY,
+    CONF_DISMISS_INPUT_BOOLEAN,
     CONF_DISMISS_MOTION_ENTITIES,
     CONF_DISMISS_NFC_TAGS,
     CONF_DISMISS_POWER_SENSOR,
@@ -22,6 +24,7 @@ from custom_components.smart_wake.const import (
     CONF_ESCALATION_LIGHT_ENTITIES,
     CONF_MAIN_AUDIO_CONTENT_ID,
     CONF_MAIN_MEDIA_PLAYER_ENTITIES,
+    CONF_MAIN_TTS_DELAY,
     CONF_MAIN_TTS_ENABLED,
     CONF_MAX_SNOOZE_COUNT,
     CONF_NAME,
@@ -34,6 +37,7 @@ from custom_components.smart_wake.const import (
     CONF_PRE_ALARM_LIGHT_ENTITIES,
     CONF_SLEEP_STAGE_ENTITY,
     CONF_SLEEP_STAGE_VALUES,
+    CONF_SNOOZE_BUTTON_ENTITY,
     CONF_SNOOZE_DURATION,
     CONF_TIME,
     CONF_WEATHER_RAIN_ENTITY,
@@ -371,6 +375,112 @@ class TestSmartWakeCoordinator(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(dismiss_res2)
         self.assertEqual(alarm.status, STATUS_IDLE)
         self.assertFalse(alarm.is_full_test)
+
+    async def test_anti_cheat_dismiss_bypasses_max_snooze_count(self) -> None:
+        """Test dismiss diverts to snooze even if max snooze limit is reached when anti-cheat conditions are not met."""
+        motion_state = MagicMock()
+        motion_state.state = "off"
+        self.hass.states.get = MagicMock(return_value=motion_state)
+
+        cfg = dict(self.config)
+        cfg[CONF_DISMISS_MOTION_ENTITIES] = ["binary_sensor.bath_motion"]
+        cfg[CONF_MAX_SNOOZE_COUNT] = 1
+        alarm = SmartWakeAlarm(self.hass, "test_ac_bypass_max", cfg)
+        alarm._status = STATUS_RINGING
+
+        # 1. Normal snooze consumes the single available snooze
+        snooze_res = await alarm.async_snooze()
+        self.assertTrue(snooze_res)
+        self.assertEqual(alarm.snooze_count, 1)
+
+        # Alarm rings again after snooze
+        alarm._status = STATUS_RINGING
+
+        # Normal snooze is now blocked because max snooze limit (1) is reached
+        snooze_res2 = await alarm.async_snooze()
+        self.assertFalse(snooze_res2)
+
+        # User presses dismiss button in bed (motion still off):
+        # Anti-cheat must NOT leave alarm blaring continuously in bed, but divert to snooze with bypass_max_limit=True!
+        dismissed = await alarm.async_dismiss()
+        self.assertFalse(dismissed)
+        self.assertEqual(alarm.status, STATUS_SNOOZED)
+        self.assertIsNotNone(alarm.snooze_until)
+
+    async def test_anti_cheat_dismiss_input_boolean(self) -> None:
+        """Test input_boolean helper gating for anti-cheat and automatic reset on final dismiss."""
+        helper_state = MagicMock()
+        helper_state.state = "off"
+        self.hass.states.get = MagicMock(return_value=helper_state)
+
+        cfg = dict(self.config)
+        cfg[CONF_DISMISS_INPUT_BOOLEAN] = "input_boolean.up_and_awake"
+        alarm = SmartWakeAlarm(self.hass, "test_ac_helper", cfg)
+        alarm._status = STATUS_RINGING
+
+        # 1. Helper is off -> Anti-cheat unfulfilled -> diverts to snooze
+        dismissed = await alarm.async_dismiss()
+        self.assertFalse(dismissed)
+        self.assertEqual(alarm.status, STATUS_SNOOZED)
+
+        # 2. Helper is switched to 'on' -> Anti-cheat fulfilled -> dismiss succeeds and resets helper to off
+        helper_state.state = "on"
+        dismissed2 = await alarm.async_dismiss()
+        self.assertTrue(dismissed2)
+        self.assertEqual(alarm.status, STATUS_IDLE)
+
+        # Verify helper was turned back off
+        self.hass.services.async_call.assert_any_call(
+            "input_boolean",
+            "turn_off",
+            {"entity_id": "input_boolean.up_and_awake"},
+            blocking=False,
+        )
+
+    async def test_hardware_button_single_and_double_click(self) -> None:
+        """Test hardware button listener distinguishes single click (snooze) and double click (dismiss)."""
+        cfg = dict(self.config)
+        cfg[CONF_SNOOZE_BUTTON_ENTITY] = "event.bedside_btn"
+        cfg[CONF_DISMISS_BUTTON_ENTITY] = "event.bedside_btn"  # Shared button entity
+        alarm = SmartWakeAlarm(self.hass, "test_btn_events", cfg)
+        alarm._status = STATUS_RINGING
+
+        # Setup listeners
+        alarm._setup_active_alarm_listeners()
+
+        from homeassistant.helpers.event import async_track_state_change_event
+
+        # Find the registered state change listener callback
+        track_call = None
+        for call in async_track_state_change_event.call_args_list:
+            if "event.bedside_btn" in call[0][1]:
+                track_call = call[0][2]
+                break
+
+        self.assertIsNotNone(track_call, "button state change listener should be registered")
+
+        # 1. Single click on button -> Snoozes alarm
+        event_single = MagicMock()
+        event_single.data = {
+            "entity_id": "event.bedside_btn",
+            "new_state": MagicMock(state="single", attributes={"event_type": "single"}),
+        }
+        track_call(event_single)
+        await asyncio.sleep(0.01)
+        self.assertEqual(alarm.status, STATUS_SNOOZED)
+
+        # 2. Re-trigger ringing
+        alarm._status = STATUS_RINGING
+
+        # 3. Double click on button -> Dismisses alarm
+        event_double = MagicMock()
+        event_double.data = {
+            "entity_id": "event.bedside_btn",
+            "new_state": MagicMock(state="double", attributes={"event_type": "double"}),
+        }
+        track_call(event_double)
+        await asyncio.sleep(0.01)
+        self.assertEqual(alarm.status, STATUS_IDLE)
 
 
 if __name__ == "__main__":

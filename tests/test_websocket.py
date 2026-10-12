@@ -45,6 +45,8 @@ class TestSmartWakeWebSocket(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(data["is_full_test"])
         self.assertFalse(data["is_testing"])
         self.assertIn("config_summary", data)
+        self.assertIn("main_tts_delay", data["config_summary"])
+        self.assertIn("dismiss_input_boolean", data["config_summary"])
 
     async def test_websocket_commands_registration(self) -> None:
         """Test registration of all websocket commands."""

@@ -90,6 +90,7 @@ from .const import (
     CONF_DISMISS_NFC_TAGS,
     CONF_DISMISS_POWER_SENSOR,
     CONF_DISMISS_POWER_THRESHOLD,
+    CONF_DISMISS_INPUT_BOOLEAN,
     CONF_ENABLED,
     CONF_ESCALATION_COVER_ENTITIES,
     CONF_ESCALATION_COVER_POSITION,
@@ -111,6 +112,7 @@ from .const import (
     CONF_MAIN_TTS_ENGINE,
     CONF_MAIN_TTS_ENABLED,
     CONF_MAIN_TTS_MESSAGE,
+    CONF_MAIN_TTS_DELAY,
     CONF_MAX_SNOOZE_COUNT,
     CONF_NAME,
     CONF_PERSON_ENTITIES,
@@ -152,6 +154,7 @@ from .const import (
     DEFAULT_MAIN_AUDIO_TARGET_VOLUME,
     DEFAULT_MAIN_TTS_ENABLED,
     DEFAULT_MAIN_TTS_MESSAGE,
+    DEFAULT_MAIN_TTS_DELAY,
     DEFAULT_MAX_SNOOZE_COUNT,
     DEFAULT_NAME,
     DEFAULT_PERSON_HOME_REQUIRED,
@@ -233,6 +236,7 @@ class SmartWakeAlarm:
         self._unsub_dry_run: CALLBACK_TYPE | None = None
         self._unsub_listeners: list[CALLBACK_TYPE] = []
         self._fade_tasks: list[asyncio.Task] = []
+        self._tts_task: asyncio.Task | None = None
 
         # Testing state
         self._is_dry_run: bool = False
@@ -372,6 +376,10 @@ class SmartWakeAlarm:
             elif isinstance(nfc, str) and nfc.strip():
                 return True
 
+        ib = self._config.get(CONF_DISMISS_INPUT_BOOLEAN)
+        if ib and str(ib).strip():
+            return True
+
         return False
 
     def is_anti_cheat_fulfilled(self) -> bool:
@@ -424,6 +432,19 @@ class SmartWakeAlarm:
         if getattr(self, "_anti_cheat_nfc_scanned", False):
             _LOGGER.info("Smart Wake [%s] Anti-Cheat verified via NFC tag scan", self._name)
             return True
+
+        # 4. Input boolean helper entity (state == on)
+        ib = self._config.get(CONF_DISMISS_INPUT_BOOLEAN)
+        if ib and str(ib).strip():
+            st = self.hass.states.get(str(ib).strip())
+            if st and str(st.state).lower() in (STATE_ON, "on", "true"):
+                _LOGGER.info(
+                    "Smart Wake [%s] Anti-Cheat verified via input_boolean %s (state: %s)",
+                    self._name,
+                    ib,
+                    st.state,
+                )
+                return True
 
         return False
 
@@ -799,13 +820,15 @@ class SmartWakeAlarm:
     # -------------------------------------------------------------------------
     # Snooze, Dismiss & Skip Actions
     # -------------------------------------------------------------------------
-    async def async_snooze(self, custom_duration: int | None = None) -> bool:
+    async def async_snooze(
+        self, custom_duration: int | None = None, bypass_max_limit: bool = False
+    ) -> bool:
         """Perform snooze action if within maximum snooze limit."""
         if self._status not in (STATUS_RINGING, STATUS_PRE_ALARM):
             _LOGGER.debug("Cannot snooze Smart Wake [%s] while in %s", self._name, self._status)
             return False
 
-        if self._snooze_count >= self.max_snooze_count:
+        if not bypass_max_limit and self._snooze_count >= self.max_snooze_count:
             _LOGGER.warning(
                 "Smart Wake [%s] maximum snooze limit (%d) reached! Snooze blocked.",
                 self._name,
@@ -870,7 +893,7 @@ class SmartWakeAlarm:
 
         If Anti-Cheat conditions are configured and forced is False:
         - If anti-cheat is currently fulfilled: final dismissal.
-        - If anti-cheat is NOT fulfilled: acts as snooze!
+        - If anti-cheat is NOT fulfilled: acts as snooze (even if max snooze reached)!
         """
         if self._status in (STATUS_IDLE, STATUS_DISMISSED, STATUS_SKIPPED):
             return True
@@ -883,8 +906,8 @@ class SmartWakeAlarm:
                     self._name,
                 )
             else:
-                _LOGGER.warning(
-                    "Smart Wake [%s] Anti-Cheat conditions NOT fulfilled! Dismiss action acting as Snooze.",
+                _LOGGER.info(
+                    "Smart Wake [%s] Anti-Cheat conditions not yet fulfilled. Dismiss action pauses/snoozes alarm.",
                     self._name,
                 )
                 self._fire_event(
@@ -904,14 +927,8 @@ class SmartWakeAlarm:
                     )
                     return False
 
-                # Divert to snooze
-                snoozed = await self.async_snooze()
-                if not snoozed:
-                    _LOGGER.warning(
-                        "Smart Wake [%s] Anti-Cheat not fulfilled and maximum snooze limit (%d) reached! Dismiss blocked, alarm continues.",
-                        self._name,
-                        self.max_snooze_count,
-                    )
+                # Divert to snooze (bypassing max snooze count so audio stops while user gets up to fulfill anti-cheat)
+                await self.async_snooze(bypass_max_limit=True)
                 return False
 
         # Final dismissal
@@ -928,6 +945,21 @@ class SmartWakeAlarm:
         self._cancel_fade_tasks()
         self._cleanup_listeners()
         await self._stop_media_players()
+
+        # Reset input_boolean helper if configured and ON
+        ib = self._config.get(CONF_DISMISS_INPUT_BOOLEAN)
+        if ib and hasattr(self.hass, "services") and hasattr(self.hass, "states"):
+            st = self.hass.states.get(str(ib).strip())
+            if st and str(st.state).lower() in (STATE_ON, "on", "true"):
+                try:
+                    await self.hass.services.async_call(
+                        "input_boolean",
+                        "turn_off",
+                        {"entity_id": str(ib).strip()},
+                        blocking=False,
+                    )
+                except Exception as err:
+                    _LOGGER.debug("Could not reset input_boolean %s: %s", ib, err)
 
         self._status = STATUS_DISMISSED
         self._active_phase = PHASE_NONE
@@ -1073,12 +1105,28 @@ class SmartWakeAlarm:
                 val = getattr(new_state, "state", "").lower()
                 event_type = str(getattr(new_state, "attributes", {}).get("event_type", "")).lower()
 
-                # Dismiss button (undergoes Anti-Cheat gating)
-                if ent_id == btn_dismiss or "double" in val or "double" in event_type:
+                is_double = any(x in val for x in ("double", "2", "triple", "multi", "hold", "long")) or any(x in event_type for x in ("double", "2", "triple", "multi", "hold", "long"))
+                is_single = any(x in val for x in ("single", "1", "click", "press", "short", "toggle")) or any(x in event_type for x in ("single", "1", "click", "press", "short", "toggle"))
+
+                # 1. Double click -> Dismiss
+                if is_double:
+                    _LOGGER.info("Smart Wake [%s] Double-click detected on %s -> Dismiss", self._name, ent_id)
                     self.hass.async_create_task(self.async_dismiss(forced=False))
-                # Snooze button
-                elif ent_id == btn_snooze or "single" in val or "single" in event_type or val == STATE_ON:
+                # 2. Single click -> Snooze
+                elif is_single:
+                    _LOGGER.info("Smart Wake [%s] Single-click detected on %s -> Snooze", self._name, ent_id)
                     self.hass.async_create_task(self.async_snooze())
+                # 3. Specific entities
+                elif ent_id == btn_snooze:
+                    _LOGGER.info("Smart Wake [%s] Snooze button triggered on %s -> Snooze", self._name, ent_id)
+                    self.hass.async_create_task(self.async_snooze())
+                elif ent_id == btn_dismiss:
+                    if btn_snooze and btn_dismiss == btn_snooze:
+                        _LOGGER.info("Smart Wake [%s] Shared button pressed -> Defaulting to Snooze (use double-click to Dismiss)", self._name)
+                        self.hass.async_create_task(self.async_snooze())
+                    else:
+                        _LOGGER.info("Smart Wake [%s] Dismiss button triggered on %s -> Dismiss", self._name, ent_id)
+                        self.hass.async_create_task(self.async_dismiss(forced=False))
 
             try:
                 unsub = async_track_state_change_event(
@@ -1087,6 +1135,32 @@ class SmartWakeAlarm:
                 self._unsub_listeners.append(unsub)
             except Exception as err:
                 _LOGGER.debug("Could not attach button tracker: %s", err)
+
+        # 5. Input Boolean helper entity -> Dismiss when turned ON
+        ib = self._config.get(CONF_DISMISS_INPUT_BOOLEAN)
+        if ib and str(ib).strip():
+            ib_ent = str(ib).strip()
+            @callback
+            def _on_ib_change(event: Event) -> None:
+                new_state = getattr(event.data, "get", lambda _: None)("new_state") if hasattr(event, "data") else None
+                if not new_state:
+                    return
+                val = str(getattr(new_state, "state", "")).lower()
+                if val in (STATE_ON, "on", "true"):
+                    _LOGGER.info(
+                        "Smart Wake [%s] Input boolean %s turned ON -> Anti-Cheat fulfilled, Dismissing!",
+                        self._name,
+                        ib_ent,
+                    )
+                    self.hass.async_create_task(self.async_dismiss(forced=True))
+
+            try:
+                unsub = async_track_state_change_event(
+                    self.hass, [ib_ent], _on_ib_change
+                )
+                self._unsub_listeners.append(unsub)
+            except Exception as err:
+                _LOGGER.debug("Could not attach input_boolean tracker: %s", err)
 
     def _setup_sleep_tracker_listener(self) -> None:
         """Monitor sleep tracker stage within early wake window to trigger in light sleep."""
@@ -1222,6 +1296,24 @@ class SmartWakeAlarm:
             )
         )
 
+        initial_vol = 0.05 if fade_in else target_vol
+
+        # 1. Set initial quiet volume on all media players first
+        for mp_ent in media_players:
+            try:
+                await self.hass.services.async_call(
+                    "media_player",
+                    "volume_set",
+                    {"entity_id": mp_ent, "volume_level": initial_vol},
+                    blocking=False,
+                )
+            except Exception as err:
+                _LOGGER.debug("Initial volume_set failed on %s: %s", mp_ent, err)
+
+        # 2. Wait 0.5s so media players apply the quiet volume BEFORE starting playback
+        await asyncio.sleep(0.5)
+
+        # 3. Start playback at the quiet initial volume
         for mp_ent in media_players:
             if content_id:
                 try:
@@ -1238,26 +1330,22 @@ class SmartWakeAlarm:
                 except Exception as err:
                     _LOGGER.debug("Main alarm media play failed on %s: %s", mp_ent, err)
 
+            # 4. If fade-in is enabled, gently fade volume from initial_vol up to target_vol
             if fade_in:
                 task = self.hass.async_create_task(
-                    self._fade_volume(mp_ent, 0.05, target_vol, fade_duration)
+                    self._fade_volume(mp_ent, initial_vol, target_vol, fade_duration)
                 )
                 self._fade_tasks.append(task)
-            else:
-                try:
-                    await self.hass.services.async_call(
-                        "media_player",
-                        "volume_set",
-                        {"entity_id": mp_ent, "volume_level": target_vol},
-                        blocking=False,
-                    )
-                except Exception as err:
-                    _LOGGER.debug("Main alarm volume call failed on %s: %s", mp_ent, err)
 
-        # TTS Greeting
+        # TTS Greeting (zeitverzögert, pausiert Medienwiedergabe vorher, spricht, setzt danach fort)
         tts_enabled = self._config.get(CONF_MAIN_TTS_ENABLED, DEFAULT_MAIN_TTS_ENABLED)
         if tts_enabled and media_players:
-            await self._speak_greeting(media_players[0])
+            tts_delay = int(self._config.get(CONF_MAIN_TTS_DELAY, DEFAULT_MAIN_TTS_DELAY))
+            if self._is_dry_run:
+                tts_delay = min(2, tts_delay)
+            self._tts_task = self.hass.async_create_task(
+                self._run_tts_sequence(media_players, tts_delay)
+            )
 
         # Custom main script
         main_script = self._config.get(CONF_MAIN_SCRIPT_ENTITY)
@@ -1399,8 +1487,65 @@ class SmartWakeAlarm:
         except Exception as err:
             _LOGGER.debug("Volume fade error on %s: %s", entity_id, err)
 
+    async def _run_tts_sequence(
+        self, media_players: list[str], delay_seconds: int
+    ) -> None:
+        """Wait configured delay, pause media playback, speak TTS greeting, and resume playback."""
+        try:
+            if delay_seconds > 0:
+                await asyncio.sleep(delay_seconds)
+
+            if self._status != STATUS_RINGING and not self._is_dry_run:
+                return
+
+            # 1. Pause media playback
+            for mp_ent in media_players:
+                try:
+                    await self.hass.services.async_call(
+                        "media_player",
+                        "media_pause",
+                        {"entity_id": mp_ent},
+                        blocking=False,
+                    )
+                except Exception as err:
+                    _LOGGER.debug("Could not pause media player %s before TTS: %s", mp_ent, err)
+
+            # Short pause after pause command
+            await asyncio.sleep(0.5)
+
+            if self._status != STATUS_RINGING and not self._is_dry_run:
+                return
+
+            # 2. Speak greeting on primary media player
+            await self._speak_greeting(media_players[0])
+
+            # 3. Wait for TTS output to finish speaking
+            raw_msg = self._config.get(CONF_MAIN_TTS_MESSAGE, DEFAULT_MAIN_TTS_MESSAGE)
+            word_count = len(str(raw_msg).split())
+            speech_duration = 3 if self._is_dry_run else max(5.0, word_count * 0.45 + 2.5)
+            await asyncio.sleep(speech_duration)
+
+            if self._status != STATUS_RINGING and not self._is_dry_run:
+                return
+
+            # 4. Resume media playback
+            for mp_ent in media_players:
+                try:
+                    await self.hass.services.async_call(
+                        "media_player",
+                        "media_play",
+                        {"entity_id": mp_ent},
+                        blocking=False,
+                    )
+                except Exception as err:
+                    _LOGGER.debug("Could not resume media player %s after TTS: %s", mp_ent, err)
+        except asyncio.CancelledError:
+            pass
+        except Exception as err:
+            _LOGGER.error("TTS sequence error for Smart Wake [%s]: %s", self._name, err)
+
     async def _speak_greeting(self, media_player_entity: str) -> None:
-        """Compose and speak morning briefing via TTS."""
+        """Compose and speak morning briefing via TTS (modern tts.speak and legacy fallback)."""
         raw_msg = self._config.get(CONF_MAIN_TTS_MESSAGE, DEFAULT_MAIN_TTS_MESSAGE)
 
         # Substitute dynamic variables
@@ -1413,22 +1558,87 @@ class SmartWakeAlarm:
                 outdoor_temp = f"{s.state} °C"
 
         formatted = (
-            raw_msg.replace("{time}", time_text)
+            str(raw_msg)
+            .replace("{time}", time_text)
             .replace("{temp}", outdoor_temp)
             .replace("{name}", self._name)
         )
 
-        tts_engine = self._config.get(CONF_MAIN_TTS_ENGINE, "tts.speak")
-        try:
-            domain, service = tts_engine.split(".", 1) if "." in tts_engine else ("tts", "speak")
-            await self.hass.services.async_call(
-                domain,
-                service,
-                {"media_player_entity_id": media_player_entity, "message": formatted},
-                blocking=False,
+        tts_engine = self._config.get(CONF_MAIN_TTS_ENGINE) or ""
+        spoken = False
+
+        # 1. Modern HA: tts.speak service
+        if hasattr(self.hass, "services") and self.hass.services.has_service("tts", "speak"):
+            try:
+                service_data: dict[str, Any] = {
+                    "media_player_entity_id": media_player_entity,
+                    "message": formatted,
+                }
+                target_dict = (
+                    {"entity_id": tts_engine}
+                    if (tts_engine and tts_engine.startswith("tts."))
+                    else None
+                )
+                await self.hass.services.async_call(
+                    "tts",
+                    "speak",
+                    service_data,
+                    target=target_dict,
+                    blocking=False,
+                )
+                spoken = True
+                _LOGGER.info(
+                    "Smart Wake [%s] TTS spoken via tts.speak (engine: %s, target: %s)",
+                    self._name,
+                    tts_engine or "default",
+                    media_player_entity,
+                )
+            except Exception as err:
+                _LOGGER.warning("tts.speak attempt failed: %s; trying legacy fallback", err)
+
+        # 2. Legacy HA fallback (e.g. tts.google_translate_say, tts.cloud_say, or custom engine)
+        if not spoken and hasattr(self.hass, "services"):
+            legacy_service = None
+            if tts_engine and "." in tts_engine:
+                domain, sname = tts_engine.split(".", 1)
+                if self.hass.services.has_service(domain, sname):
+                    legacy_service = (domain, sname)
+                elif self.hass.services.has_service("tts", f"{sname}_say"):
+                    legacy_service = ("tts", f"{sname}_say")
+
+            if not legacy_service:
+                for candidate in ("google_translate_say", "cloud_say", "piper_say"):
+                    if self.hass.services.has_service("tts", candidate):
+                        legacy_service = ("tts", candidate)
+                        break
+
+            if legacy_service:
+                try:
+                    await self.hass.services.async_call(
+                        legacy_service[0],
+                        legacy_service[1],
+                        {
+                            "entity_id": media_player_entity,
+                            "message": formatted,
+                        },
+                        blocking=False,
+                    )
+                    spoken = True
+                    _LOGGER.info(
+                        "Smart Wake [%s] TTS spoken via legacy service %s.%s on %s",
+                        self._name,
+                        legacy_service[0],
+                        legacy_service[1],
+                        media_player_entity,
+                    )
+                except Exception as err:
+                    _LOGGER.warning("Legacy TTS service %s failed: %s", legacy_service, err)
+
+        if not spoken:
+            _LOGGER.warning(
+                "Smart Wake [%s] Could not speak TTS greeting: no compatible TTS service found",
+                self._name,
             )
-        except Exception as err:
-            _LOGGER.debug("TTS greeting call failed: %s", err)
 
     async def _stop_media_players(self) -> None:
         """Stop all media players configured for this alarm."""
@@ -1623,6 +1833,9 @@ class SmartWakeAlarm:
             if not t.done():
                 t.cancel()
         self._fade_tasks.clear()
+        if self._tts_task and not self._tts_task.done():
+            self._tts_task.cancel()
+            self._tts_task = None
 
     def _notify_update(self) -> None:
         """Broadcast state updates to entities and websocket subscribers."""

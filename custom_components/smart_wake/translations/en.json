@@ -81,6 +81,7 @@
           "main_audio_fade_duration": "Fade-in duration (seconds)",
           "main_audio_target_volume": "Target audio volume (0.1 - 1.0)",
           "main_tts_enabled": "Enable TTS morning briefing",
+          "main_tts_delay": "TTS delay (seconds before briefing)",
           "main_tts_message": "TTS template ({time}, {temp}, {name})",
           "main_script_entity": "Custom HA script (script.*)"
         }
@@ -108,7 +109,8 @@
           "snooze_button_entity": "Hardware snooze button",
           "dismiss_motion_entities": "Anti-cheat motion detectors (bathroom/kitchen)",
           "dismiss_power_sensor": "Anti-cheat appliance power sensor",
-          "dismiss_power_threshold": "Power threshold to dismiss (Watts)"
+          "dismiss_power_threshold": "Power threshold to dismiss (Watts)",
+          "dismiss_input_boolean": "Anti-cheat helper switch (input_boolean.*)"
         }
       }
     }

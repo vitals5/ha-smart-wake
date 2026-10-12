@@ -1478,6 +1478,7 @@ class SmartWakePanel extends HTMLElement {
         main_audio_fade_duration: rawCfg.main_audio_fade_duration ?? 30,
         main_audio_target_volume: Math.round((rawCfg.main_audio_target_volume ?? 0.5) * 100),
         main_tts_enabled: Boolean(rawCfg.main_tts_enabled ?? sumCfg.main_tts_enabled ?? false),
+        main_tts_delay: rawCfg.main_tts_delay ?? sumCfg.main_tts_delay ?? 15,
         main_tts_message: rawCfg.main_tts_message ?? "Guten Morgen! Es ist {time} Uhr, draußen sind es {temp}°C.",
         main_tts_engine: rawCfg.main_tts_engine ?? "",
         main_script_entity: rawCfg.main_script_entity ?? "",
@@ -1511,6 +1512,7 @@ class SmartWakePanel extends HTMLElement {
           : (sumCfg.dismiss_nfc ? sumCfg.dismiss_nfc.join(", ") : ""),
         dismiss_power_sensor: rawCfg.dismiss_power_sensor ?? sumCfg.dismiss_power ?? "",
         dismiss_power_threshold: rawCfg.dismiss_power_threshold ?? 10.0,
+        dismiss_input_boolean: rawCfg.dismiss_input_boolean ?? sumCfg.dismiss_input_boolean ?? "",
       };
     } else {
       this._editConfig = {
@@ -1549,6 +1551,7 @@ class SmartWakePanel extends HTMLElement {
         main_audio_fade_duration: 30,
         main_audio_target_volume: 50,
         main_tts_enabled: false,
+        main_tts_delay: 15,
         main_tts_message: "Guten Morgen! Es ist {time} Uhr, draußen sind es {temp}°C.",
         main_tts_engine: "",
         main_script_entity: "",
@@ -1572,6 +1575,7 @@ class SmartWakePanel extends HTMLElement {
         dismiss_nfc_tags: "",
         dismiss_power_sensor: "",
         dismiss_power_threshold: 10.0,
+        dismiss_input_boolean: "",
       };
     }
     this._renderModals();
@@ -1681,6 +1685,7 @@ class SmartWakePanel extends HTMLElement {
     if (getVal("f_main_audio_fade_duration") !== undefined) this._editConfig.main_audio_fade_duration = getVal("f_main_audio_fade_duration");
     if (getVal("f_main_audio_target_volume") !== undefined) this._editConfig.main_audio_target_volume = getVal("f_main_audio_target_volume");
     if (getChecked("f_main_tts_enabled") !== undefined) this._editConfig.main_tts_enabled = getChecked("f_main_tts_enabled");
+    if (getVal("f_main_tts_delay") !== undefined) this._editConfig.main_tts_delay = getVal("f_main_tts_delay");
     if (getVal("f_main_tts_message") !== undefined) this._editConfig.main_tts_message = getVal("f_main_tts_message");
     if (getVal("f_main_tts_engine") !== undefined) this._editConfig.main_tts_engine = getVal("f_main_tts_engine");
     if (getVal("f_main_script_entity") !== undefined) this._editConfig.main_script_entity = getVal("f_main_script_entity");
@@ -1705,6 +1710,7 @@ class SmartWakePanel extends HTMLElement {
     if (getVal("f_dismiss_nfc_tags") !== undefined) this._editConfig.dismiss_nfc_tags = getVal("f_dismiss_nfc_tags");
     if (getVal("f_dismiss_power_sensor") !== undefined) this._editConfig.dismiss_power_sensor = getVal("f_dismiss_power_sensor");
     if (getVal("f_dismiss_power_threshold") !== undefined) this._editConfig.dismiss_power_threshold = getVal("f_dismiss_power_threshold");
+    if (getVal("f_dismiss_input_boolean") !== undefined) this._editConfig.dismiss_input_boolean = getVal("f_dismiss_input_boolean");
   }
 
   async _saveSettings() {
@@ -1761,6 +1767,7 @@ class SmartWakePanel extends HTMLElement {
         main_audio_fade_duration: parseInt(this._editConfig.main_audio_fade_duration, 10) || 30,
         main_audio_target_volume: (parseInt(this._editConfig.main_audio_target_volume, 10) || 50) / 100,
         main_tts_enabled: Boolean(this._editConfig.main_tts_enabled),
+        main_tts_delay: parseInt(this._editConfig.main_tts_delay, 10) ?? 15,
         main_tts_message: this._editConfig.main_tts_message || "",
         main_tts_engine: this._editConfig.main_tts_engine || null,
         main_script_entity: this._editConfig.main_script_entity || null,
@@ -1784,6 +1791,7 @@ class SmartWakePanel extends HTMLElement {
         dismiss_nfc_tags: toList(this._editConfig.dismiss_nfc_tags),
         dismiss_power_sensor: this._editConfig.dismiss_power_sensor || null,
         dismiss_power_threshold: parseFloat(this._editConfig.dismiss_power_threshold) || 10.0,
+        dismiss_input_boolean: this._editConfig.dismiss_input_boolean || null,
       };
 
       if (this._editingAlarmId === "__new__") {
@@ -2657,7 +2665,7 @@ class SmartWakePanel extends HTMLElement {
         </div>
 
         <div class="anti-cheat-box">
-          <div>🛡️ <b>Quittierung:</b> Taster, Bad-Bewegungsmelder oder Kaffeemaschine</div>
+          <div>🛡️ <b>Quittierung:</b> Taster, Bad-Bewegungsmelder, Kaffeemaschine oder Schalter/Helfer</div>
           <div>💤 <b>Schlummern:</b> ${alarm.snooze_duration} Min (Max: ${alarm.max_snooze_count}x | Aktuell: ${alarm.snooze_count})</div>
         </div>
 
@@ -2672,7 +2680,7 @@ class SmartWakePanel extends HTMLElement {
               <div style="font-size: 12px; margin-top: 5px; color: #ffe0b2;">
                 ${
                   alarm.has_anti_cheat
-                    ? "🛡️ <b>Anti-Cheat aktiv:</b> Quittierung wirkt als Schlummern. Endgültiges Beenden erfolgt automatisch bei Aufsteh-Beweis (Bad-Bewegungsmelder, Kaffeemaschine oder NFC-Tag)."
+                    ? "🛡️ <b>Anti-Cheat aktiv:</b> Quittierung wirkt als Schlummern. Endgültiges Beenden erfolgt automatisch bei Aufsteh-Beweis (Bad-Bewegungsmelder, Kaffeemaschine, Schalter/Helfer oder NFC-Tag)."
                     : "Der Wecker pausiert vorübergehend und weckt nach Ablauf der Schlummerzeit erneut."
                 }
               </div>
@@ -3018,6 +3026,12 @@ class SmartWakePanel extends HTMLElement {
           </div>
 
           <div class="form-group">
+            <label class="form-label" for="f_main_tts_delay">TTS Verzögerung (Sekunden nach Weckstart)</label>
+            <input class="form-input" id="f_main_tts_delay" type="number" min="0" max="300" value="${cfg.main_tts_delay ?? 15}" />
+            <span class="form-hint">Pausiert die Musik nach N Sekunden, spricht das Briefing und setzt die Wiedergabe fort</span>
+          </div>
+
+          <div class="form-group">
             <label class="form-label" for="f_main_tts_message">TTS Nachrichtentext</label>
             <textarea class="form-textarea" id="f_main_tts_message" rows="3">${cfg.main_tts_message || "Guten Morgen! Es ist {time} Uhr, draußen sind es {temp}°C."}</textarea>
             <span class="form-hint">Verfügbare Platzhalter: {name}, {time}, {temp}</span>
@@ -3123,6 +3137,8 @@ class SmartWakePanel extends HTMLElement {
               <span class="form-hint">Quittiert, wenn z. B. Kaffeemaschine eingeschaltet wird (> 10W)</span>
             </div>
           </div>
+
+          ${this._renderEntityField("f_dismiss_input_boolean", "Anti-Cheat Schalter / Helfer (input_boolean)", cfg.dismiss_input_boolean, "input_boolean.aufgestanden", "Quittiert automatisch, wenn dieser Schalter auf 'on' geschaltet wird (wird danach automatisch zurückgesetzt)", "input_boolean", false)}
         `;
 
       default:

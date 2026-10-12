@@ -105,6 +105,7 @@ from .const import (
     CONF_CALENDAR_ENTITY,
     CONF_DAYS,
     CONF_DISMISS_BUTTON_ENTITY,
+    CONF_DISMISS_INPUT_BOOLEAN,
     CONF_DISMISS_MOTION_ENTITIES,
     CONF_DISMISS_NFC_TAGS,
     CONF_DISMISS_POWER_SENSOR,
@@ -127,6 +128,7 @@ from .const import (
     CONF_MAIN_AUDIO_TARGET_VOLUME,
     CONF_MAIN_MEDIA_PLAYER_ENTITIES,
     CONF_MAIN_SCRIPT_ENTITY,
+    CONF_MAIN_TTS_DELAY,
     CONF_MAIN_TTS_ENGINE,
     CONF_MAIN_TTS_ENABLED,
     CONF_MAIN_TTS_MESSAGE,
@@ -168,6 +170,7 @@ from .const import (
     DEFAULT_MAIN_AUDIO_FADE_DURATION,
     DEFAULT_MAIN_AUDIO_FADE_IN,
     DEFAULT_MAIN_AUDIO_TARGET_VOLUME,
+    DEFAULT_MAIN_TTS_DELAY,
     DEFAULT_MAIN_TTS_ENABLED,
     DEFAULT_MAIN_TTS_MESSAGE,
     DEFAULT_MAX_SNOOZE_COUNT,
@@ -564,6 +567,14 @@ class SmartWakeOptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                 ): bool,
                 vol.Required(
+                    CONF_MAIN_TTS_DELAY,
+                    default=int(
+                        self._options.get(
+                            CONF_MAIN_TTS_DELAY, DEFAULT_MAIN_TTS_DELAY
+                        )
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=300)),
+                vol.Required(
                     CONF_MAIN_TTS_MESSAGE,
                     default=self._options.get(
                         CONF_MAIN_TTS_MESSAGE, DEFAULT_MAIN_TTS_MESSAGE
@@ -721,6 +732,12 @@ class SmartWakeOptionsFlowHandler(config_entries.OptionsFlow):
                         )
                     ),
                 ): vol.Coerce(float),
+                vol.Optional(
+                    CONF_DISMISS_INPUT_BOOLEAN,
+                    description={"suggested_value": self._options.get(CONF_DISMISS_INPUT_BOOLEAN)},
+                ): EntitySelector(
+                    EntitySelectorConfig(domain="input_boolean")
+                ) if EntitySelector else str,
             }
         )
         return self.async_show_form(step_id="snooze_dismiss", data_schema=schema)
