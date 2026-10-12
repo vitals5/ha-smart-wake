@@ -31,6 +31,7 @@ async def async_setup_entry(
         SmartWakeSnoozeButton(alarm, entry),
         SmartWakeDismissButton(alarm, entry),
         SmartWakeTestButton(alarm, entry),
+        SmartWakeFullTestButton(alarm, entry),
         SmartWakeSkipNextButton(alarm, entry),
     ])
 
@@ -102,6 +103,24 @@ class SmartWakeTestButton(SmartWakeBaseButton):
             await self._alarm.async_stop_dry_run()
         else:
             await self._alarm.async_start_dry_run()
+
+
+class SmartWakeFullTestButton(SmartWakeBaseButton):
+    """Button triggering full real-time test mode."""
+
+    _attr_translation_key = "full_test"
+    _attr_icon = "mdi:alarm-bell"
+
+    def __init__(self, alarm: SmartWakeAlarm, entry: ConfigEntry) -> None:
+        super().__init__(alarm, entry, "full_test", "Full Test Alarm")
+
+    async def async_press(self) -> None:
+        """Press the full test button."""
+        _LOGGER.info("Full test button pressed for Smart Wake [%s]", self._alarm.name)
+        if self._alarm.is_full_test:
+            await self._alarm.async_stop_test()
+        else:
+            await self._alarm.async_start_full_test()
 
 
 class SmartWakeSkipNextButton(SmartWakeBaseButton):

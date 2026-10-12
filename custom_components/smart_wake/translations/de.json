@@ -152,6 +152,9 @@
       "test": {
         "name": "Testlauf (30s Zeitraffer)"
       },
+      "full_test": {
+        "name": "Voller Testlauf"
+      },
       "skip_next": {
         "name": "Nächsten Alarm überspringen"
       }

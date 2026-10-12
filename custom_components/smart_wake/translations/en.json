@@ -152,6 +152,9 @@
       "test": {
         "name": "Test Alarm (Dry-Run)"
       },
+      "full_test": {
+        "name": "Full Test Alarm"
+      },
       "skip_next": {
         "name": "Skip Next Alarm"
       }

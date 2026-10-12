@@ -9,6 +9,7 @@ from tests.mock_ha import MockHomeAssistant
 
 from custom_components.smart_wake.button import (
     SmartWakeDismissButton,
+    SmartWakeFullTestButton,
     SmartWakeSkipNextButton,
     SmartWakeSnoozeButton,
     SmartWakeTestButton,
@@ -99,6 +100,7 @@ class TestSmartWakeEntities(unittest.IsolatedAsyncioTestCase):
         btn_dismiss = SmartWakeDismissButton(self.alarm, self.entry)
         btn_test = SmartWakeTestButton(self.alarm, self.entry)
         btn_skip = SmartWakeSkipNextButton(self.alarm, self.entry)
+        btn_full_test = SmartWakeFullTestButton(self.alarm, self.entry)
 
         self.alarm._status = STATUS_RINGING
         await btn_snooze.async_press()
@@ -112,6 +114,12 @@ class TestSmartWakeEntities(unittest.IsolatedAsyncioTestCase):
 
         await btn_test.async_press()
         self.assertTrue(self.alarm.is_dry_run)
+
+        # Full test button
+        await self.alarm.async_stop_test()
+        await btn_full_test.async_press()
+        self.assertTrue(self.alarm.is_full_test)
+        self.assertTrue(self.alarm.is_testing)
 
     async def test_number_entities(self) -> None:
         """Test number entities: snooze duration, max snooze, pre-alarm duration."""

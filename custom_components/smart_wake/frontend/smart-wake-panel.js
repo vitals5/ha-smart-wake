@@ -26,6 +26,9 @@ class SmartWakePanel extends HTMLElement {
     this._editConfig = null;
     this._activeTab = "general";
     this._saving = false;
+
+    // Test selection modal state
+    this._testModalAlarmId = null;
   }
 
   set hass(hass) {
@@ -135,6 +138,7 @@ class SmartWakePanel extends HTMLElement {
       await this._hass.callWS({
         type: "smart_wake/test_alarm",
         alarm_id: alarmId,
+        mode: "dry_run",
       });
       await this._fetchAlarms();
 
@@ -143,16 +147,42 @@ class SmartWakePanel extends HTMLElement {
       this._testInterval = setInterval(async () => {
         await this._fetchAlarms();
         const a = this._alarms.find((x) => x.id === alarmId);
-        if (!a || !a.is_dry_run) {
+        if (!a || !a.is_testing) {
           clearInterval(this._testInterval);
         }
       }, 1000);
     } catch (err) {
       console.error("Dry run test failed:", err);
+      alert("Fehler beim Starten des Zeitraffer-Tests: " + (err.message || err));
     }
   }
 
-  async _stopDryRun(alarmId) {
+  async _startFullTest(alarmId, startFromPreAlarm = false) {
+    if (!this._hass) return;
+    try {
+      await this._hass.callWS({
+        type: "smart_wake/start_full_test",
+        alarm_id: alarmId,
+        start_from_pre_alarm: startFromPreAlarm,
+      });
+      await this._fetchAlarms();
+
+      // Poll updates during full test
+      if (this._testInterval) clearInterval(this._testInterval);
+      this._testInterval = setInterval(async () => {
+        await this._fetchAlarms();
+        const a = this._alarms.find((x) => x.id === alarmId);
+        if (!a || !a.is_testing) {
+          clearInterval(this._testInterval);
+        }
+      }, 2000);
+    } catch (err) {
+      console.error("Full test failed:", err);
+      alert("Fehler beim Starten des vollen Testlaufs: " + (err.message || err));
+    }
+  }
+
+  async _stopTest(alarmId) {
     if (!this._hass) return;
     try {
       await this._hass.callWS({
@@ -164,6 +194,16 @@ class SmartWakePanel extends HTMLElement {
     } catch (err) {
       console.error("Stop test failed:", err);
     }
+  }
+
+  _openTestModal(alarmId) {
+    this._testModalAlarmId = alarmId;
+    this._render();
+  }
+
+  _closeTestModal() {
+    this._testModalAlarmId = null;
+    this._render();
   }
 
   _toggleSidebar() {
@@ -591,38 +631,58 @@ class SmartWakePanel extends HTMLElement {
     }
   }
 
-  _getStatusBadge(status, phase) {
+  _getStatusBadge(status, phase, isFullTest = false) {
     let color = "#78909c";
     let text = status.toUpperCase();
     let pulse = false;
 
-    switch (status) {
-      case "ringing":
+    if (isFullTest) {
+      if (status === "ringing") {
         color = "#e53935";
-        text = phase === "escalation" ? "🔔 ESKALATION!" : "🔔 KLINGELT";
+        text = phase === "escalation" ? "🔔 TEST: ESKALATION!" : "🔔 TEST: KLINGELT";
         pulse = true;
-        break;
-      case "pre_alarm":
+      } else if (status === "pre_alarm") {
         color = "#fb8c00";
-        text = "🌅 PRE-ALARM";
+        text = "🌅 TEST: PRE-ALARM";
         pulse = true;
-        break;
-      case "snoozed":
+      } else if (status === "snoozed") {
         color = "#8e24aa";
-        text = "💤 SCHLUMMERT";
-        break;
-      case "skipped":
-        color = "#546e7a";
-        text = "⏭️ ÜBERSPRUNGEN";
-        break;
-      case "dismissed":
-        color = "#43a047";
-        text = "✅ QUITTIERT";
-        break;
-      case "idle":
-        color = "#2e7d32";
-        text = "AKTIV (IDLE)";
-        break;
+        text = "💤 TEST: SCHLUMMERT";
+        pulse = true;
+      } else {
+        color = "#e53935";
+        text = "🔔 TESTLAUF AKTIV";
+        pulse = true;
+      }
+    } else {
+      switch (status) {
+        case "ringing":
+          color = "#e53935";
+          text = phase === "escalation" ? "🔔 ESKALATION!" : "🔔 KLINGELT";
+          pulse = true;
+          break;
+        case "pre_alarm":
+          color = "#fb8c00";
+          text = "🌅 PRE-ALARM";
+          pulse = true;
+          break;
+        case "snoozed":
+          color = "#8e24aa";
+          text = "💤 SCHLUMMERT";
+          break;
+        case "skipped":
+          color = "#546e7a";
+          text = "⏭️ ÜBERSPRUNGEN";
+          break;
+        case "dismissed":
+          color = "#43a047";
+          text = "✅ QUITTIERT";
+          break;
+        case "idle":
+          color = "#2e7d32";
+          text = "AKTIV (IDLE)";
+          break;
+      }
     }
 
     return `<span class="badge ${pulse ? "pulse" : ""}" style="background-color: ${color};">${text}</span>`;
@@ -1413,6 +1473,76 @@ class SmartWakePanel extends HTMLElement {
           transition: width 0.3s;
         }
 
+        .full-test-banner {
+          background: rgba(229, 57, 53, 0.12);
+          border: 1px solid rgba(229, 57, 53, 0.4);
+          border-radius: 8px;
+          padding: 10px 14px;
+          margin-top: 10px;
+          animation: modalFadeIn 0.3s ease-out;
+        }
+
+        button.btn-full-test {
+          background: rgba(229, 57, 53, 0.18) !important;
+          color: #ff8a80 !important;
+          border-color: rgba(229, 57, 53, 0.4) !important;
+        }
+
+        button.btn-full-test:hover {
+          background: rgba(229, 57, 53, 0.3) !important;
+        }
+
+        button.btn-stop-test {
+          background: #d32f2f !important;
+          color: white !important;
+          border-color: #f44336 !important;
+          font-weight: 600 !important;
+        }
+
+        button.btn-stop-test:hover {
+          background: #b71c1c !important;
+        }
+
+        .test-choice-card {
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
+          border-radius: 12px;
+          padding: 16px;
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .test-choice-card:hover {
+          background: rgba(255, 255, 255, 0.08);
+          border-color: var(--primary-color, #03a9f4);
+          transform: translateY(-2px);
+        }
+
+        .test-choice-icon {
+          font-size: 32px;
+          flex-shrink: 0;
+        }
+
+        .test-choice-content {
+          flex: 1;
+        }
+
+        .test-choice-title {
+          font-weight: 600;
+          font-size: 15px;
+          color: var(--primary-text-color, #fff);
+          margin-bottom: 4px;
+        }
+
+        .test-choice-desc {
+          font-size: 12px;
+          color: var(--secondary-text-color, #aaa);
+          line-height: 1.4;
+        }
+
         .empty-state {
           text-align: center;
           padding: 60px 20px;
@@ -1961,6 +2091,7 @@ class SmartWakePanel extends HTMLElement {
       ${this._renderBody()}
 
       ${this._editingAlarmId ? this._renderSettingsModal() : ""}
+      ${this._testModalAlarmId ? this._renderTestModal() : ""}
     `;
 
     // Attach header listeners
@@ -1985,12 +2116,25 @@ class SmartWakePanel extends HTMLElement {
         btnEdit.onclick = () => this._openSettingsModal(alarm.id);
       }
 
-      const btnTest = this.shadowRoot.getElementById(`test-${alarm.id}`);
-      if (btnTest) {
-        btnTest.onclick = () => {
-          if (alarm.is_dry_run) this._stopDryRun(alarm.id);
-          else this._startDryRun(alarm.id);
+      const btnFullTest = this.shadowRoot.getElementById(`full-test-${alarm.id}`);
+      if (btnFullTest) {
+        btnFullTest.onclick = () => {
+          if (alarm.pre_alarm_duration > 0) {
+            this._openTestModal(alarm.id);
+          } else {
+            this._startFullTest(alarm.id, false);
+          }
         };
+      }
+
+      const btnDryRun = this.shadowRoot.getElementById(`dry-run-${alarm.id}`);
+      if (btnDryRun) {
+        btnDryRun.onclick = () => this._startDryRun(alarm.id);
+      }
+
+      const btnStopTest = this.shadowRoot.getElementById(`stop-test-${alarm.id}`);
+      if (btnStopTest) {
+        btnStopTest.onclick = () => this._stopTest(alarm.id);
       }
 
       const btnSnooze = this.shadowRoot.getElementById(`snooze-${alarm.id}`);
@@ -2004,9 +2148,97 @@ class SmartWakePanel extends HTMLElement {
       }
     });
 
-    // Attach Modal listeners if modal is open
+    // Attach Settings Modal listeners if modal is open
     if (this._editingAlarmId) {
       this._attachModalListeners();
+    }
+
+    // Attach Test Modal listeners if test modal is open
+    if (this._testModalAlarmId) {
+      this._attachTestModalListeners();
+    }
+  }
+
+  _renderTestModal() {
+    const alarm = this._alarms.find((a) => a.id === this._testModalAlarmId);
+    if (!alarm) return "";
+
+    return `
+      <div class="modal-backdrop" id="testModalBackdrop">
+        <div class="modal-container" style="max-width: 540px;">
+          <div class="modal-header">
+            <div class="modal-title-group">
+              <span class="modal-icon">🔔</span>
+              <div>
+                <h2 class="modal-title">Voller Testlauf: ${alarm.name}</h2>
+                <div class="modal-subtitle">Wähle die Startphase für den Echtzeit-Testlauf</div>
+              </div>
+            </div>
+            <button class="btn-close" id="btnCloseTestModal" title="Schließen">&times;</button>
+          </div>
+
+          <div class="modal-body" style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+            <div class="test-choice-card" id="btnChoicePreAlarm">
+              <div class="test-choice-icon">🌅</div>
+              <div class="test-choice-content">
+                <div class="test-choice-title">Phase 1: Pre-Alarm starten</div>
+                <div class="test-choice-desc">
+                  Startet sanftes Licht, Jalousien & Heizung (${alarm.pre_alarm_duration} Min.) und wechselt danach automatisch zum Hauptalarm.
+                </div>
+              </div>
+              <button class="btn-primary" style="align-self: center; white-space: nowrap; pointer-events: none;">Starten</button>
+            </div>
+
+            <div class="test-choice-card" id="btnChoiceMainAlarm">
+              <div class="test-choice-icon">🔔</div>
+              <div class="test-choice-content">
+                <div class="test-choice-title">Phase 2: Hauptalarm direkt starten</div>
+                <div class="test-choice-desc">
+                  Startet direkt Audio/TTS, aktiviert Anti-Cheat Quittierungs-Sensoren (Taster, Bewegung, Leistung, NFC) und den Eskalationstimer.
+                </div>
+              </div>
+              <button class="btn-primary" style="align-self: center; white-space: nowrap; background: #e53935; pointer-events: none;">Direkt starten</button>
+            </div>
+          </div>
+
+          <div class="modal-footer" style="justify-content: flex-end;">
+            <button class="btn-cancel" id="btnCancelTestModal">Abbrechen</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  _attachTestModalListeners() {
+    const root = this.shadowRoot;
+    const backdrop = root.getElementById("testModalBackdrop");
+    if (backdrop) {
+      backdrop.onclick = (e) => {
+        if (e.target === backdrop) this._closeTestModal();
+      };
+    }
+
+    const btnClose = root.getElementById("btnCloseTestModal");
+    if (btnClose) btnClose.onclick = () => this._closeTestModal();
+
+    const btnCancel = root.getElementById("btnCancelTestModal");
+    if (btnCancel) btnCancel.onclick = () => this._closeTestModal();
+
+    const alarmId = this._testModalAlarmId;
+    const btnChoicePre = root.getElementById("btnChoicePreAlarm");
+    if (btnChoicePre) {
+      btnChoicePre.onclick = () => {
+        this._closeTestModal();
+        this._startFullTest(alarmId, true);
+      };
+    }
+
+    const btnChoiceMain = root.getElementById("btnChoiceMainAlarm");
+    if (btnChoiceMain) {
+      btnChoiceMain.onclick = () => {
+        this._closeTestModal();
+        this._startFullTest(alarmId, false);
+      };
     }
   }
 
@@ -2108,7 +2340,14 @@ class SmartWakePanel extends HTMLElement {
   }
 
   _renderAlarmCard(alarm) {
-    const isRinging = alarm.status === "ringing" || alarm.status === "pre_alarm";
+    const isTesting = Boolean(alarm.is_testing);
+    const isFullTest = Boolean(alarm.is_full_test);
+    const isDryRun = Boolean(alarm.is_dry_run);
+    const isRinging =
+      alarm.status === "ringing" ||
+      alarm.status === "pre_alarm" ||
+      alarm.status === "snoozed" ||
+      isFullTest;
     const dryRunPct = Math.min(100, (alarm.dry_run_progress / 30) * 100);
 
     const cfg = alarm.config_summary || {};
@@ -2122,7 +2361,7 @@ class SmartWakePanel extends HTMLElement {
               <span>⏰</span> ${alarm.name}
             </h2>
             <div style="margin-top: 6px;">
-              ${this._getStatusBadge(alarm.status, alarm.active_phase)}
+              ${this._getStatusBadge(alarm.status, alarm.active_phase, isFullTest)}
             </div>
           </div>
           <label class="switch-toggle">
@@ -2174,7 +2413,24 @@ class SmartWakePanel extends HTMLElement {
         </div>
 
         ${
-          alarm.is_dry_run
+          isFullTest
+            ? `
+            <div class="full-test-banner">
+              <div style="font-weight: 600; font-size: 13px; color: #ff8a80; display: flex; align-items: center; justify-content: space-between;">
+                <span>🔔 Echter Testlauf in Echtzeit aktiv!</span>
+                <span class="badge" style="background: #e53935; font-size: 10px; padding: 2px 7px;">LIVE TEST</span>
+              </div>
+              <div style="font-size: 12px; color: #cfd8dc; margin-top: 5px; line-height: 1.4;">
+                Aktive Phase: <b>${alarm.active_phase === "pre_alarm" ? "Phase 1 (Pre-Alarm)" : alarm.active_phase === "escalation" ? "Phase 3 (Eskalation)" : "Phase 2 (Hauptalarm)"}</b><br>
+                <span>💡 Alle Audio- & Licht-Trigger laufen in Echtzeit. Teste Quittierung per Button, Bewegungsmelder, Leistungsmesser oder NFC!</span>
+              </div>
+            </div>
+            `
+            : ""
+        }
+
+        ${
+          isDryRun
             ? `
             <div>
               <div style="font-size: 12px; color: #ffb74d; display: flex; justify-content: space-between;">
@@ -2194,9 +2450,22 @@ class SmartWakePanel extends HTMLElement {
             <button class="btn-action" id="edit-${alarm.id}">
               ⚙️ Einstellungen
             </button>
-            <button class="btn-action" id="test-${alarm.id}" style="${alarm.is_dry_run ? "background: #f44336; color: white;" : ""}">
-              ${alarm.is_dry_run ? "⏹️ Test stoppen" : "▶️ 30s Testlauf"}
-            </button>
+            ${
+              isTesting
+                ? `
+                <button class="btn-action btn-stop-test" id="stop-test-${alarm.id}">
+                  ⏹️ Testlauf beenden
+                </button>
+                `
+                : `
+                <button class="btn-action btn-full-test" id="full-test-${alarm.id}" title="Startet einen echten Echtzeit-Testlauf mit allen Sensoren, Audio & Quittierung">
+                  🔔 Voller Testlauf
+                </button>
+                <button class="btn-action" id="dry-run-${alarm.id}" title="Simuliert alle 3 Phasen beschleunigt in 30 Sekunden">
+                  ⚡ 30s Zeitraffer
+                </button>
+                `
+            }
           </div>
 
           <div class="btn-group">

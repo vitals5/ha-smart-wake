@@ -233,9 +233,10 @@ class SmartWakeAlarm:
         self._unsub_listeners: list[CALLBACK_TYPE] = []
         self._fade_tasks: list[asyncio.Task] = []
 
-        # Dry run testing state
+        # Testing state
         self._is_dry_run: bool = False
         self._dry_run_progress: int = 0
+        self._is_full_test: bool = False
 
     # -------------------------------------------------------------------------
     # Properties
@@ -329,6 +330,16 @@ class SmartWakeAlarm:
     def dry_run_progress(self) -> int:
         """Return dry run test progress in seconds (0-30)."""
         return self._dry_run_progress
+
+    @property
+    def is_full_test(self) -> bool:
+        """Return whether full real-time test run is active."""
+        return self._is_full_test
+
+    @property
+    def is_testing(self) -> bool:
+        """Return whether any test run (dry-run or full test) is active."""
+        return self._is_dry_run or self._is_full_test
 
     @property
     def config(self) -> dict[str, Any]:
@@ -750,6 +761,7 @@ class SmartWakeAlarm:
     async def async_dismiss(self) -> None:
         """Dismiss active alarm or pre-alarm, restoring normal state."""
         _LOGGER.info("Smart Wake [%s] dismissed", self._name)
+        self._is_full_test = False
         self._cancel_phase_timer()
         self._cancel_fade_tasks()
         self._cleanup_listeners()
@@ -1339,6 +1351,59 @@ class SmartWakeAlarm:
         self._status = STATUS_IDLE
         self._active_phase = PHASE_NONE
         self._notify_update()
+
+    async def async_start_full_test(
+        self,
+        start_from_pre_alarm: bool | None = None,
+        pre_alarm_seconds: int | None = None,
+    ) -> None:
+        """Start a full, real-time test run of the alarm sequence."""
+        if self._is_dry_run:
+            await self.async_stop_dry_run()
+
+        _LOGGER.info("Starting full real-time test run for Smart Wake [%s]", self._name)
+        self._is_full_test = True
+        self._snooze_count = 0
+
+        pre_alarm_enabled = self._config.get(CONF_PRE_ALARM_ENABLED, DEFAULT_PRE_ALARM_ENABLED)
+        if start_from_pre_alarm is None:
+            start_from_pre_alarm = pre_alarm_enabled
+
+        if start_from_pre_alarm and pre_alarm_enabled:
+            _LOGGER.info("Full test run: Starting Phase 1 (Pre-Alarm)")
+            self._status = STATUS_PRE_ALARM
+            self._active_phase = PHASE_PRE_ALARM
+            self._fire_event(EVENT_SMART_WAKE_PRE_ALARM_STARTED, {"test": True})
+            self._notify_update()
+
+            self._setup_active_alarm_listeners()
+            self._setup_sleep_tracker_listener()
+            await self._execute_pre_alarm_actions()
+
+            delay = pre_alarm_seconds if pre_alarm_seconds is not None else (self.pre_alarm_duration * 60)
+            if delay <= 0:
+                delay = 1
+
+            @callback
+            def _to_main_alarm(_point: Any = None) -> None:
+                self.hass.async_create_task(self.async_start_main_alarm())
+
+            self._cancel_phase_timer()
+            self._unsub_phase_timer = async_call_later(self.hass, delay, _to_main_alarm)
+        else:
+            _LOGGER.info("Full test run: Starting directly in Phase 2 (Main Alarm)")
+            await self.async_start_main_alarm()
+
+    async def async_stop_test(self) -> None:
+        """Stop any active test run (dry-run or full test) and restore idle state."""
+        _LOGGER.info("Stopping test run for Smart Wake [%s]", self._name)
+        if self._is_dry_run:
+            await self.async_stop_dry_run()
+            return
+
+        if self._is_full_test or self._status in (STATUS_RINGING, STATUS_PRE_ALARM, STATUS_SNOOZED):
+            self._is_full_test = False
+            await self.async_dismiss()
 
     # -------------------------------------------------------------------------
     # Helper & Notification Utilities

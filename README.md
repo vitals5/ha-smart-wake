@@ -54,6 +54,7 @@ Smart Wake basiert auf dem modernen Home Assistant `config_flow`-System:
   | `sensor.<wecker_name>_dynamic_offset` | Sensor | Berechnete Weckzeitverschiebung in Minuten (z. B. Frost/Regen). |
   | `button.<wecker_name>_snooze` | Button | Manuelles Schlummern. |
   | `button.<wecker_name>_dismiss` | Button | Manuelles Quittieren / Beenden. |
+  | `button.<wecker_name>_full_test` | Button | Startet einen vollständigen Echtzeit-Testlauf (Licht, Audio, TTS, Anti-Cheat, Eskalation). |
   | `button.<wecker_name>_test` | Button | Startet den 30-Sekunden-Zeitraffer-Testlauf. |
   | `button.<wecker_name>_skip_next` | Button | Überspringt einmalig den nächsten regulären Wecklauf. |
   | `number.<wecker_name>_snooze_duration` | Number (min) | Einstellbare Schlummerdauer (1 bis 60 Min, Standard: 9). |
@@ -181,9 +182,9 @@ Die Integration registriert automatisch ein eigenes Icon in der Seitenleiste von
 
 * **Live-Status-Monitoring:** Countdown bis zum nächsten Alarm unter Berücksichtigung aller Wetter-Offsets.
 * **In-Panel Konfiguration:** Alle Einstellungen (Allgemein, Bedingungen, Phasen 1-3, Quittierung & Anti-Cheat) sowie das Anlegen und Löschen von Weckern können komfortabel direkt im Side Panel vorgenommen werden – ohne Umweg über das HA-Einstellungsmenü!
-* **Live-Suche & Entitäts-Vorschau:** Alle Entity-Eingabefelder bieten eine interaktive Autovervollständigung mit Domain-Icons, Friendly Names und Echtzeit-Statusanzeige (z. B. `an`, `aus`, `21.5 °C`) sowie interaktive Vorschau-Chips zum schnellen Entfernen.
-* **Testlauf-Modus (Dry-Run):** 30-Sekunden-Zeitraffer-Testlauf mit Live-Balkenanzeige, um Licht-Fade, Lautstärken und Rollo-Steuerung risikolos zu prüfen.
-* **Direkt-Aktionen:** Schnelles Umschalten, Schlummern und Quittieren direkt im Browser.
+* **Voller Echtzeit-Testlauf:** Startet einen vollständigen, echten Testlauf (wahlweise ab Phase 1 Pre-Alarm oder direkt ab Phase 2 Hauptalarm) mit Live-Audio, TTS-Morgenbriefing, Eskalationstimer und aktiven Anti-Cheat-Quittierungs-Sensoren (Taster, Bewegung, Leistungsmesser, NFC).
+* **30s Zeitraffer-Testlauf (Dry-Run):** Beschleunigte 30-Sekunden-Simulation aller 3 Phasen mit Fortschrittsbalken zum schnellen Checken der Aktionen.
+* **Direkt-Aktionen:** Schnelles Umschalten, Schlummern, Quittieren und Beenden von Testläufen direkt im Dashboard.
 
 ---
 
@@ -249,10 +250,11 @@ Klicke einfach auf den folgenden Button, um das Smart Wake Repository direkt in 
 
 | Dienst | Parameter | Beschreibung |
 |---|---|---|
+| `smart_wake.start_full_test` | `alarm_id`, `start_from_pre_alarm`, `pre_alarm_seconds` | Startet einen vollständigen Echtzeit-Testlauf (Licht, Audio/TTS, Anti-Cheat, Eskalation). |
+| `smart_wake.test_alarm` | `alarm_id`, `mode`, `start_from_pre_alarm` | Startet einen Testlauf (`dry_run` für 30s Zeitraffer oder `full` für echten Test). |
+| `smart_wake.stop_test` | `alarm_id` | Bricht einen laufenden Testlauf (Zeitraffer oder Voll-Test) sofort ab. |
 | `smart_wake.snooze` | `alarm_id`, `duration` | Schlummert einen aktiven Wecker für die konfigurierte Dauer oder benutzerdefinierte Minuten. |
 | `smart_wake.dismiss` | `alarm_id` | Quittiert und beendet einen aktiven Wecker oder Vor-Alarm. |
-| `smart_wake.test_alarm` | `alarm_id` | Startet den 30-Sekunden-Zeitraffer-Testlauf (Licht, Audio, Rollos). |
-| `smart_wake.stop_test` | `alarm_id` | Bricht einen laufenden Testlauf sofort ab. |
 | `smart_wake.set_time` | `alarm_id`, `time` | Setzt eine neue Weckzeit (z. B. `"06:45"`). |
 | `smart_wake.skip_next` | `alarm_id`, `skip` | Überspringt einmalig den nächsten regulären Wecklauf. |
 

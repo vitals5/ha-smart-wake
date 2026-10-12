@@ -226,12 +226,46 @@ class TestSmartWakeCoordinator(unittest.IsolatedAsyncioTestCase):
         alarm = SmartWakeAlarm(self.hass, "test_dry_run", self.config)
         await alarm.async_start_dry_run()
         self.assertTrue(alarm.is_dry_run)
+        self.assertTrue(alarm.is_testing)
         self.assertEqual(alarm.status, STATUS_PRE_ALARM)
 
         # Stop dry run
         await alarm.async_stop_dry_run()
         self.assertFalse(alarm.is_dry_run)
+        self.assertFalse(alarm.is_testing)
         self.assertEqual(alarm.status, STATUS_IDLE)
+
+    async def test_full_test_mode(self) -> None:
+        """Test full test mode (real-time test execution)."""
+        alarm = SmartWakeAlarm(self.hass, "test_full_test", self.config)
+        self.assertFalse(alarm.is_full_test)
+        self.assertFalse(alarm.is_testing)
+
+        # 1. Start full test directly from main alarm
+        await alarm.async_start_full_test(start_from_pre_alarm=False)
+        self.assertTrue(alarm.is_full_test)
+        self.assertTrue(alarm.is_testing)
+        self.assertEqual(alarm.status, STATUS_RINGING)
+        self.assertEqual(alarm.active_phase, PHASE_MAIN_ALARM)
+
+        # Stop test
+        await alarm.async_stop_test()
+        self.assertFalse(alarm.is_full_test)
+        self.assertFalse(alarm.is_testing)
+        self.assertEqual(alarm.status, STATUS_IDLE)
+
+        # 2. Start full test from pre-alarm
+        await alarm.async_start_full_test(start_from_pre_alarm=True, pre_alarm_seconds=60)
+        self.assertTrue(alarm.is_full_test)
+        self.assertTrue(alarm.is_testing)
+        self.assertEqual(alarm.status, STATUS_PRE_ALARM)
+        self.assertEqual(alarm.active_phase, PHASE_PRE_ALARM)
+
+        # Dismiss during test also ends full test mode
+        await alarm.async_dismiss()
+        self.assertFalse(alarm.is_full_test)
+        self.assertFalse(alarm.is_testing)
+
 
 
 if __name__ == "__main__":

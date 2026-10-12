@@ -125,6 +125,8 @@ def _serialize_alarm(alarm: SmartWakeAlarm) -> dict[str, Any]:
         "offset_reasons": alarm.offset_reasons,
         "is_dry_run": alarm.is_dry_run,
         "dry_run_progress": alarm.dry_run_progress,
+        "is_full_test": getattr(alarm, "is_full_test", False),
+        "is_testing": getattr(alarm, "is_testing", alarm.is_dry_run),
         "skip_next": alarm.skip_next,
         "config": dict(cfg),
         "config_summary": {
@@ -176,17 +178,44 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
     @websocket_api.websocket_command({
         vol.Required("type"): "smart_wake/test_alarm",
         vol.Required("alarm_id"): str,
+        vol.Optional("mode", default="dry_run"): vol.In(["dry_run", "full"]),
+        vol.Optional("start_from_pre_alarm", default=True): bool,
     })
     @websocket_api.async_response
     async def ws_test_alarm(
         hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
     ) -> None:
-        """Handle start 30s dry run test."""
+        """Handle start test (dry run or full test)."""
         alarm = _get_alarm(msg["alarm_id"])
         if not alarm:
             connection.send_error(msg["id"], "alarm_not_found", "Alarm instance not found")
             return
-        await alarm.async_start_dry_run()
+
+        mode = msg.get("mode", "dry_run")
+        if mode == "full":
+            await alarm.async_start_full_test(start_from_pre_alarm=msg.get("start_from_pre_alarm", True))
+        else:
+            await alarm.async_start_dry_run()
+
+        connection.send_result(msg["id"], {"success": True, "alarm": _serialize_alarm(alarm)})
+
+    # 2b. smart_wake/start_full_test
+    @websocket_api.websocket_command({
+        vol.Required("type"): "smart_wake/start_full_test",
+        vol.Required("alarm_id"): str,
+        vol.Optional("start_from_pre_alarm", default=True): bool,
+    })
+    @websocket_api.async_response
+    async def ws_start_full_test(
+        hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+    ) -> None:
+        """Handle starting full real-time test run."""
+        alarm = _get_alarm(msg["alarm_id"])
+        if not alarm:
+            connection.send_error(msg["id"], "alarm_not_found", "Alarm instance not found")
+            return
+
+        await alarm.async_start_full_test(start_from_pre_alarm=msg.get("start_from_pre_alarm", True))
         connection.send_result(msg["id"], {"success": True, "alarm": _serialize_alarm(alarm)})
 
     # 3. smart_wake/stop_test
@@ -198,12 +227,12 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
     async def ws_stop_test(
         hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
     ) -> None:
-        """Handle stop dry run test."""
+        """Handle stop test (dry run or full test)."""
         alarm = _get_alarm(msg["alarm_id"])
         if not alarm:
             connection.send_error(msg["id"], "alarm_not_found", "Alarm instance not found")
             return
-        await alarm.async_stop_dry_run()
+        await alarm.async_stop_test()
         connection.send_result(msg["id"], {"success": True, "alarm": _serialize_alarm(alarm)})
 
     # 4. smart_wake/snooze
@@ -418,6 +447,7 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
     if hasattr(websocket_api, "async_register_command"):
         websocket_api.async_register_command(hass, ws_get_alarms)
         websocket_api.async_register_command(hass, ws_test_alarm)
+        websocket_api.async_register_command(hass, ws_start_full_test)
         websocket_api.async_register_command(hass, ws_stop_test)
         websocket_api.async_register_command(hass, ws_snooze)
         websocket_api.async_register_command(hass, ws_dismiss)

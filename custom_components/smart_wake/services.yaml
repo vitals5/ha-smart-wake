@@ -30,8 +30,8 @@ dismiss:
         text:
 
 test_alarm:
-  name: Testlauf starten (30s Zeitraffer)
-  description: Startet einen 30-sekündigen Testlauf zur Vorschau von Licht-Fade, Audio-Lautstärke und Rollos.
+  name: Testlauf starten
+  description: Startet einen 30-sekündigen Zeitraffer-Testlauf oder einen vollen Echtzeit-Testlauf zur Überprüfung aller Phasen.
   fields:
     alarm_id:
       name: Wecker ID oder Name
@@ -39,14 +39,49 @@ test_alarm:
       example: "Wecker Schlafzimmer"
       selector:
         text:
+    mode:
+      name: Modus
+      description: "dry_run für 30s Zeitraffer, full für vollen Echtzeit-Durchlauf."
+      default: "dry_run"
+      selector:
+        select:
+          options:
+            - label: "30s Zeitraffer"
+              value: "dry_run"
+            - label: "Voller Testlauf"
+              value: "full"
+    start_from_pre_alarm:
+      name: Ab Pre-Alarm starten
+      description: Ob der Test ab Phase 1 (Pre-Alarm) oder direkt bei Phase 2 (Hauptalarm) starten soll.
+      default: true
+      selector:
+        boolean:
+
+start_full_test:
+  name: Vollen Testlauf starten
+  description: Startet den echten Weckablauf sofort in Echtzeit mit Live-Aktionen, TTS-Begrüßung und Anti-Cheat Quittierung.
+  fields:
+    alarm_id:
+      name: Wecker ID oder Name
+      description: Der zu testende Wecker.
+      example: "Wecker Schlafzimmer"
+      selector:
+        text:
+    start_from_pre_alarm:
+      name: Ab Pre-Alarm starten
+      description: Ob der Test ab Phase 1 (Pre-Alarm) oder direkt bei Phase 2 (Hauptalarm) beginnen soll.
+      default: true
+      selector:
+        boolean:
 
 stop_test:
   name: Testlauf stoppen
-  description: Bricht einen laufenden 30-Sekunden-Testlauf vorzeitig ab.
+  description: Bricht einen laufenden 30-Sekunden-Zeitraffer oder vollen Testlauf vorzeitig ab.
   fields:
     alarm_id:
       name: Wecker ID oder Name
       description: Der Wecker, dessen Test gestoppt werden soll.
+      example: "Wecker Schlafzimmer"
       selector:
         text:
 

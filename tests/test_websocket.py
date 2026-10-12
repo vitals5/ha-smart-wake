@@ -40,6 +40,10 @@ class TestSmartWakeWebSocket(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["name"], "Wecker WS")
         self.assertEqual(data["time"], "06:30")
         self.assertTrue(data["enabled"])
+        self.assertIn("is_full_test", data)
+        self.assertIn("is_testing", data)
+        self.assertFalse(data["is_full_test"])
+        self.assertFalse(data["is_testing"])
         self.assertIn("config_summary", data)
 
     async def test_websocket_commands_registration(self) -> None:
@@ -51,10 +55,21 @@ class TestSmartWakeWebSocket(unittest.IsolatedAsyncioTestCase):
 
         with unittest.mock.patch("custom_components.smart_wake.websocket.websocket_api.async_register_command", side_effect=mock_register):
             async_register_websocket_api(self.hass)
-            self.assertGreaterEqual(len(registered_cmds), 11)
+            self.assertGreaterEqual(len(registered_cmds), 12)
             self.assertIn("ws_update_config", registered_cmds)
             self.assertIn("ws_create_alarm", registered_cmds)
             self.assertIn("ws_delete_alarm", registered_cmds)
+            self.assertIn("ws_start_full_test", registered_cmds)
+
+            # Test start_full_test
+            conn_test = MagicMock()
+            msg_test = {"id": 10, "alarm_id": "entry_ws", "start_from_pre_alarm": False}
+            await registered_cmds["ws_start_full_test"](self.hass, conn_test, msg_test)
+            conn_test.send_result.assert_called_once()
+            res_test = conn_test.send_result.call_args[0][1]
+            self.assertTrue(res_test["success"])
+            self.assertTrue(self.alarm.is_full_test)
+            self.assertTrue(self.alarm.is_testing)
 
             # Test update_config
             conn = MagicMock()

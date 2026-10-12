@@ -53,6 +53,8 @@ class TestSmartWakeServices(unittest.IsolatedAsyncioTestCase):
         self.assertIn("dismiss", registered_handlers)
         self.assertIn("set_time", registered_handlers)
         self.assertIn("test_alarm", registered_handlers)
+        self.assertIn("start_full_test", registered_handlers)
+        self.assertIn("stop_test", registered_handlers)
 
         # Call snooze service
         self.alarm._status = STATUS_RINGING
@@ -65,6 +67,24 @@ class TestSmartWakeServices(unittest.IsolatedAsyncioTestCase):
         call_mock.data = {"alarm_id": "entry_1", "time": "07:45"}
         await registered_handlers["set_time"](call_mock)
         self.assertEqual(self.alarm.time_str, "07:45")
+
+        # Call start_full_test service
+        call_mock.data = {"alarm_id": "entry_1", "start_from_pre_alarm": False}
+        await registered_handlers["start_full_test"](call_mock)
+        self.assertTrue(self.alarm.is_full_test)
+        self.assertTrue(self.alarm.is_testing)
+
+        # Call stop_test service
+        call_mock.data = {"alarm_id": "entry_1"}
+        await registered_handlers["stop_test"](call_mock)
+        self.assertFalse(self.alarm.is_full_test)
+        self.assertFalse(self.alarm.is_testing)
+
+        # Call test_alarm with mode="full"
+        call_mock.data = {"alarm_id": "entry_1", "mode": "full", "start_from_pre_alarm": False}
+        await registered_handlers["test_alarm"](call_mock)
+        self.assertTrue(self.alarm.is_full_test)
+        self.assertTrue(self.alarm.is_testing)
 
         # Unregister
         async_unregister_services(self.hass)

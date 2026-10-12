@@ -46,6 +46,7 @@ _LOGGER = logging.getLogger(__name__)
 SERVICE_SNOOZE = "snooze"
 SERVICE_DISMISS = "dismiss"
 SERVICE_TEST_ALARM = "test_alarm"
+SERVICE_START_FULL_TEST = "start_full_test"
 SERVICE_STOP_TEST = "stop_test"
 SERVICE_SKIP_NEXT = "skip_next"
 SERVICE_SET_TIME = "set_time"
@@ -66,6 +67,15 @@ SCHEMA_DISMISS = vol.Schema(
 SCHEMA_TEST_ALARM = vol.Schema(
     {
         vol.Optional("alarm_id"): str,
+        vol.Optional("mode", default="dry_run"): vol.In(["dry_run", "full"]),
+        vol.Optional("start_from_pre_alarm", default=True): bool,
+    }
+)
+
+SCHEMA_START_FULL_TEST = vol.Schema(
+    {
+        vol.Optional("alarm_id"): str,
+        vol.Optional("start_from_pre_alarm", default=True): bool,
     }
 )
 
@@ -131,18 +141,31 @@ def async_register_services(hass: HomeAssistant) -> None:
             await alarm.async_dismiss()
 
     async def handle_test_alarm(call: ServiceCall) -> None:
-        """Handle test alarm (dry-run) call."""
+        """Handle test alarm call (dry-run or full)."""
         alarm_id = call.data.get("alarm_id")
+        mode = call.data.get("mode", "dry_run")
+        start_pre = call.data.get("start_from_pre_alarm", True)
         alarms = _get_target_alarms(hass, alarm_id)
         for alarm in alarms:
-            await alarm.async_start_dry_run()
+            if mode == "full":
+                await alarm.async_start_full_test(start_from_pre_alarm=start_pre)
+            else:
+                await alarm.async_start_dry_run()
+
+    async def handle_start_full_test(call: ServiceCall) -> None:
+        """Handle start full real-time test run."""
+        alarm_id = call.data.get("alarm_id")
+        start_pre = call.data.get("start_from_pre_alarm", True)
+        alarms = _get_target_alarms(hass, alarm_id)
+        for alarm in alarms:
+            await alarm.async_start_full_test(start_from_pre_alarm=start_pre)
 
     async def handle_stop_test(call: ServiceCall) -> None:
-        """Handle stop test call."""
+        """Handle stop test call (stops dry run or full test)."""
         alarm_id = call.data.get("alarm_id")
         alarms = _get_target_alarms(hass, alarm_id)
         for alarm in alarms:
-            await alarm.async_stop_dry_run()
+            await alarm.async_stop_test()
 
     async def handle_skip_next(call: ServiceCall) -> None:
         """Handle skip next alarm call."""
@@ -164,6 +187,7 @@ def async_register_services(hass: HomeAssistant) -> None:
         hass.services.async_register(DOMAIN, SERVICE_SNOOZE, handle_snooze, schema=SCHEMA_SNOOZE)
         hass.services.async_register(DOMAIN, SERVICE_DISMISS, handle_dismiss, schema=SCHEMA_DISMISS)
         hass.services.async_register(DOMAIN, SERVICE_TEST_ALARM, handle_test_alarm, schema=SCHEMA_TEST_ALARM)
+        hass.services.async_register(DOMAIN, SERVICE_START_FULL_TEST, handle_start_full_test, schema=SCHEMA_START_FULL_TEST)
         hass.services.async_register(DOMAIN, SERVICE_STOP_TEST, handle_stop_test, schema=SCHEMA_STOP_TEST)
         hass.services.async_register(DOMAIN, SERVICE_SKIP_NEXT, handle_skip_next, schema=SCHEMA_SKIP_NEXT)
         hass.services.async_register(DOMAIN, SERVICE_SET_TIME, handle_set_time, schema=SCHEMA_SET_TIME)
@@ -176,6 +200,7 @@ def async_unregister_services(hass: HomeAssistant) -> None:
             SERVICE_SNOOZE,
             SERVICE_DISMISS,
             SERVICE_TEST_ALARM,
+            SERVICE_START_FULL_TEST,
             SERVICE_STOP_TEST,
             SERVICE_SKIP_NEXT,
             SERVICE_SET_TIME,
