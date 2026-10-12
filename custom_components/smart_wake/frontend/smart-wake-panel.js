@@ -35,6 +35,9 @@ class SmartWakePanel extends HTMLElement {
       this._fetchAlarms();
       this._subscribeUpdates();
     }
+    if (this._editingAlarmId) {
+      this._refreshAllPreviewChips();
+    }
   }
 
   connectedCallback() {
@@ -623,6 +626,370 @@ class SmartWakePanel extends HTMLElement {
     }
 
     return `<span class="badge ${pulse ? "pulse" : ""}" style="background-color: ${color};">${text}</span>`;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Entity Autocomplete & Live Preview Helpers
+  // ---------------------------------------------------------------------------
+  _getEntityDomainIcon(entityId, attributes = {}) {
+    if (!entityId) return "🔹";
+    const domain = entityId.split(".")[0];
+    switch (domain) {
+      case "light":
+        return "💡";
+      case "switch":
+        return "🔌";
+      case "person":
+        return "👤";
+      case "media_player":
+        return "🔊";
+      case "climate":
+        return "🌡️";
+      case "cover":
+        return "🪟";
+      case "calendar":
+        return "📅";
+      case "binary_sensor": {
+        const dc = attributes.device_class;
+        if (dc === "motion" || dc === "occupancy" || dc === "presence") return "🏃";
+        if (dc === "door" || dc === "window" || dc === "opening") return "🚪";
+        if (dc === "moisture") return "💧";
+        if (dc === "sound") return "🔊";
+        if (dc === "vibration") return "📳";
+        return "🔘";
+      }
+      case "sensor": {
+        const dc = attributes.device_class;
+        if (dc === "temperature") return "🌡️";
+        if (dc === "power" || dc === "energy") return "⚡";
+        if (dc === "battery") return "🔋";
+        if (dc === "humidity") return "💧";
+        if (dc === "illuminance") return "☀️";
+        return "📊";
+      }
+      case "script":
+        return "📜";
+      case "button":
+        return "🔘";
+      case "event":
+        return "⚡";
+      case "tts":
+        return "🗣️";
+      case "weather":
+        return "⛅";
+      case "automation":
+        return "⚙️";
+      default:
+        return "🔹";
+    }
+  }
+
+  _formatEntityState(stateObj) {
+    if (!stateObj) return "";
+    let val = stateObj.state;
+    const unit = stateObj.attributes?.unit_of_measurement;
+    if (val === "on") val = "an";
+    else if (val === "off") val = "aus";
+    else if (val === "home") val = "zuhause";
+    else if (val === "not_home") val = "abwesend";
+    else if (val === "unavailable") val = "nicht verfügbar";
+    else if (val === "unknown") val = "unbekannt";
+    else if (val === "playing") val = "spielt";
+    else if (val === "paused") val = "pausiert";
+    else if (val === "idle") val = "standby";
+
+    if (unit) return `${val} ${unit}`;
+    return val;
+  }
+
+  _searchEntities(query = "", domainsStr = "") {
+    if (!this._hass || !this._hass.states) return [];
+    const allowedDomains = domainsStr
+      ? domainsStr.split(",").map((d) => d.trim().toLowerCase()).filter(Boolean)
+      : [];
+    const q = (query || "").trim().toLowerCase();
+
+    const allStates = Object.values(this._hass.states);
+    const results = [];
+
+    for (const s of allStates) {
+      const eid = s.entity_id.toLowerCase();
+      const domain = eid.split(".")[0];
+      const fname = (s.attributes?.friendly_name || "").toLowerCase();
+
+      const inDomain = allowedDomains.length === 0 || allowedDomains.includes(domain);
+
+      let score = 0;
+      if (!q) {
+        if (!inDomain) continue;
+        score = 1;
+      } else {
+        if (eid === q) score = 100;
+        else if (fname === q) score = 90;
+        else if (eid.startsWith(q)) score = 80;
+        else if (fname.startsWith(q)) score = 70;
+        else if (eid.includes(q)) score = 60;
+        else if (fname.includes(q)) score = 50;
+        else continue;
+
+        if (inDomain) score += 25;
+      }
+
+      results.push({
+        state: s,
+        score,
+        name: s.attributes?.friendly_name || s.entity_id,
+      });
+    }
+
+    results.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.name.localeCompare(b.name);
+    });
+
+    return results.slice(0, 10).map((r) => r.state);
+  }
+
+  _renderEntityField(id, label, value, placeholder, hint, domain, isMultiple = false) {
+    return `
+      <div class="form-group">
+        <label class="form-label" for="${id}">${label}</label>
+        <div class="entity-input-wrapper">
+          <input
+            class="form-input entity-autocomplete-input"
+            id="${id}"
+            type="text"
+            value="${value || ""}"
+            placeholder="${placeholder || ""}"
+            data-domain="${domain || ""}"
+            data-multiple="${isMultiple ? "true" : "false"}"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <div class="entity-autocomplete-dropdown" id="dropdown-${id}" style="display: none;"></div>
+        </div>
+        <div class="entity-preview-chips" id="preview-${id}"></div>
+        ${hint ? `<span class="form-hint">${hint}</span>` : ""}
+      </div>
+    `;
+  }
+
+  _updatePreviewChips(input, chipsContainer) {
+    if (!input || !chipsContainer) return;
+    const rawVal = input.value || "";
+    const isMultiple = input.getAttribute("data-multiple") === "true";
+    const parts = rawVal
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    if (parts.length === 0) {
+      chipsContainer.innerHTML = "";
+      return;
+    }
+
+    const html = parts.map((entId) => {
+      const stateObj = this._hass && this._hass.states ? this._hass.states[entId] : null;
+      if (stateObj) {
+        const icon = this._getEntityDomainIcon(entId, stateObj.attributes);
+        const name = stateObj.attributes?.friendly_name || entId;
+        const stateStr = this._formatEntityState(stateObj);
+        return `
+          <div class="entity-chip" data-entity-id="${entId}" title="${entId}">
+            <span class="entity-chip-icon">${icon}</span>
+            <span class="entity-chip-name">${name}</span>
+            <span class="entity-chip-state">${stateStr}</span>
+            <button type="button" class="entity-chip-remove" data-remove="${entId}" title="${entId} entfernen">&times;</button>
+          </div>
+        `;
+      } else {
+        return `
+          <div class="entity-chip unverified" data-entity-id="${entId}" title="Nicht in Home Assistant gefunden">
+            <span class="entity-chip-icon">⚠️</span>
+            <span class="entity-chip-name">${entId}</span>
+            <span class="entity-chip-state">Nicht in HA gefunden</span>
+            <button type="button" class="entity-chip-remove" data-remove="${entId}" title="${entId} entfernen">&times;</button>
+          </div>
+        `;
+      }
+    }).join("");
+
+    chipsContainer.innerHTML = html;
+
+    chipsContainer.querySelectorAll(".entity-chip-remove").forEach((btn) => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const toRemove = btn.getAttribute("data-remove");
+        if (!toRemove) return;
+
+        if (isMultiple) {
+          const currentList = input.value
+            .split(",")
+            .map((p) => p.trim())
+            .filter((p) => p && p !== toRemove);
+          input.value = currentList.join(", ");
+        } else {
+          input.value = "";
+        }
+
+        this._updatePreviewChips(input, chipsContainer);
+        this._collectFormValues();
+      };
+    });
+  }
+
+  _refreshAllPreviewChips() {
+    if (!this.shadowRoot) return;
+    this.shadowRoot.querySelectorAll(".entity-autocomplete-input").forEach((input) => {
+      const preview = this.shadowRoot.getElementById(`preview-${input.id}`);
+      if (preview) {
+        this._updatePreviewChips(input, preview);
+      }
+    });
+  }
+
+  _initEntityAutocompletes() {
+    const root = this.shadowRoot;
+    if (!root) return;
+
+    const inputs = root.querySelectorAll(".entity-autocomplete-input");
+    inputs.forEach((input) => {
+      const id = input.id;
+      const dropdown = root.getElementById(`dropdown-${id}`);
+      const preview = root.getElementById(`preview-${id}`);
+      const domain = input.getAttribute("data-domain") || "";
+      const isMulti = input.getAttribute("data-multiple") === "true";
+
+      if (!dropdown || !preview) return;
+
+      this._updatePreviewChips(input, preview);
+
+      let currentResults = [];
+      let activeIdx = -1;
+
+      const getActiveToken = () => {
+        if (!isMulti) return input.value.trim();
+        const pos = input.selectionStart ?? input.value.length;
+        const textBefore = input.value.slice(0, pos);
+        const lastComma = textBefore.lastIndexOf(",");
+        return (lastComma >= 0 ? textBefore.slice(lastComma + 1) : textBefore).trim();
+      };
+
+      const selectEntity = (eid) => {
+        if (!isMulti) {
+          input.value = eid;
+        } else {
+          const pos = input.selectionStart ?? input.value.length;
+          const textBefore = input.value.slice(0, pos);
+          const textAfter = input.value.slice(pos);
+          const lastComma = textBefore.lastIndexOf(",");
+          const prefix = lastComma >= 0 ? textBefore.slice(0, lastComma + 1) + " " : "";
+          input.value = (prefix + eid + ", " + textAfter.replace(/^[\s,]+/, "")).trim();
+        }
+        dropdown.style.display = "none";
+        activeIdx = -1;
+        this._updatePreviewChips(input, preview);
+        this._collectFormValues();
+        input.focus();
+      };
+
+      const renderDropdown = () => {
+        if (currentResults.length === 0) {
+          dropdown.innerHTML = `<div class="autocomplete-no-results">Keine passenden Entities gefunden</div>`;
+        } else {
+          dropdown.innerHTML = currentResults.map((s, idx) => {
+            const icon = this._getEntityDomainIcon(s.entity_id, s.attributes);
+            const name = s.attributes?.friendly_name || s.entity_id;
+            const stateStr = this._formatEntityState(s);
+            return `
+              <div class="autocomplete-item ${idx === activeIdx ? "highlighted" : ""}" data-index="${idx}" data-eid="${s.entity_id}">
+                <div class="autocomplete-item-left">
+                  <span class="autocomplete-item-icon">${icon}</span>
+                  <div class="autocomplete-item-info">
+                    <span class="autocomplete-item-name">${name}</span>
+                    <span class="autocomplete-item-id">${s.entity_id}</span>
+                  </div>
+                </div>
+                <div class="autocomplete-item-right">
+                  <span class="autocomplete-item-state">${stateStr}</span>
+                </div>
+              </div>
+            `;
+          }).join("");
+
+          dropdown.querySelectorAll(".autocomplete-item").forEach((item) => {
+            item.onmousedown = (e) => {
+              e.preventDefault();
+              const eid = item.getAttribute("data-eid");
+              if (eid) selectEntity(eid);
+            };
+          });
+        }
+        dropdown.style.display = "block";
+      };
+
+      const openAutocomplete = () => {
+        root.querySelectorAll(".entity-autocomplete-dropdown").forEach((dd) => {
+          if (dd !== dropdown) dd.style.display = "none";
+        });
+        const query = getActiveToken();
+        currentResults = this._searchEntities(query, domain);
+        activeIdx = -1;
+        renderDropdown();
+      };
+
+      input.onfocus = () => {
+        openAutocomplete();
+      };
+
+      input.oninput = () => {
+        openAutocomplete();
+        this._updatePreviewChips(input, preview);
+        this._collectFormValues();
+      };
+
+      input.onkeydown = (e) => {
+        if (dropdown.style.display === "none") {
+          if (e.key === "ArrowDown") {
+            openAutocomplete();
+            e.preventDefault();
+          }
+          return;
+        }
+
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          if (currentResults.length > 0) {
+            activeIdx = (activeIdx + 1) % currentResults.length;
+            renderDropdown();
+            const highlighted = dropdown.querySelector(".autocomplete-item.highlighted");
+            if (highlighted) highlighted.scrollIntoView({ block: "nearest" });
+          }
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          if (currentResults.length > 0) {
+            activeIdx = (activeIdx - 1 + currentResults.length) % currentResults.length;
+            renderDropdown();
+            const highlighted = dropdown.querySelector(".autocomplete-item.highlighted");
+            if (highlighted) highlighted.scrollIntoView({ block: "nearest" });
+          }
+        } else if (e.key === "Enter") {
+          if (activeIdx >= 0 && currentResults[activeIdx]) {
+            e.preventDefault();
+            selectEntity(currentResults[activeIdx].entity_id);
+          }
+        } else if (e.key === "Escape") {
+          dropdown.style.display = "none";
+          activeIdx = -1;
+        }
+      };
+
+      input.onblur = () => {
+        setTimeout(() => {
+          dropdown.style.display = "none";
+        }, 150);
+      };
+    });
   }
 
   _render() {
@@ -1373,6 +1740,189 @@ class SmartWakePanel extends HTMLElement {
           background: rgba(244, 67, 54, 0.15);
           border-color: #f44336;
         }
+
+        /* -------------------------------------------------------------
+           Entity Autocomplete & Live Preview Styling
+           ------------------------------------------------------------- */
+        .entity-input-wrapper {
+          position: relative;
+          width: 100%;
+        }
+
+        .entity-autocomplete-input {
+          width: 100%;
+        }
+
+        .entity-preview-chips {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin-top: 6px;
+        }
+
+        .entity-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: rgba(3, 169, 244, 0.14);
+          border: 1px solid rgba(3, 169, 244, 0.35);
+          border-radius: 6px;
+          padding: 3px 8px;
+          font-size: 11px;
+          color: #e1f5fe;
+          user-select: none;
+          animation: chipFadeIn 0.15s ease-out;
+        }
+
+        @keyframes chipFadeIn {
+          from { opacity: 0; transform: scale(0.95); }
+          to { opacity: 1; transform: scale(1); }
+        }
+
+        .entity-chip.unverified {
+          background: rgba(255, 152, 0, 0.14);
+          border-color: rgba(255, 152, 0, 0.4);
+          color: #ffe0b2;
+        }
+
+        .entity-chip-icon {
+          font-size: 13px;
+          line-height: 1;
+        }
+
+        .entity-chip-name {
+          font-weight: 600;
+          max-width: 170px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .entity-chip-state {
+          font-size: 10px;
+          background: rgba(0, 0, 0, 0.35);
+          padding: 1px 6px;
+          border-radius: 4px;
+          color: #81d4fa;
+          font-weight: 500;
+        }
+
+        .entity-chip.unverified .entity-chip-state {
+          color: #ffcc80;
+        }
+
+        .entity-chip-remove {
+          background: transparent;
+          border: none;
+          color: rgba(255, 255, 255, 0.6);
+          font-size: 13px;
+          line-height: 1;
+          cursor: pointer;
+          padding: 0 3px;
+          border-radius: 3px;
+          transition: background 0.15s, color 0.15s;
+        }
+
+        .entity-chip-remove:hover {
+          color: #ff5252;
+          background: rgba(255, 255, 255, 0.2);
+        }
+
+        .entity-autocomplete-dropdown {
+          position: absolute;
+          top: calc(100% + 4px);
+          left: 0;
+          right: 0;
+          background: #182029;
+          border: 1px solid rgba(3, 169, 244, 0.35);
+          border-radius: 8px;
+          box-shadow: 0 12px 32px rgba(0, 0, 0, 0.75);
+          max-height: 240px;
+          overflow-y: auto;
+          z-index: 1000;
+          scrollbar-width: thin;
+        }
+
+        .autocomplete-item {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 9px 12px;
+          cursor: pointer;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+          transition: background 0.15s;
+          user-select: none;
+        }
+
+        .autocomplete-item:last-child {
+          border-bottom: none;
+        }
+
+        .autocomplete-item:hover, .autocomplete-item.highlighted {
+          background: rgba(3, 169, 244, 0.22);
+        }
+
+        .autocomplete-item-left {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          overflow: hidden;
+          min-width: 0;
+        }
+
+        .autocomplete-item-icon {
+          font-size: 17px;
+          flex-shrink: 0;
+          line-height: 1;
+        }
+
+        .autocomplete-item-info {
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          min-width: 0;
+        }
+
+        .autocomplete-item-name {
+          font-size: 12px;
+          font-weight: 600;
+          color: #fff;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .autocomplete-item-id {
+          font-size: 10px;
+          color: #90a4ae;
+          font-family: monospace;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .autocomplete-item-right {
+          flex-shrink: 0;
+          margin-left: 8px;
+        }
+
+        .autocomplete-item-state {
+          font-size: 11px;
+          background: rgba(255, 255, 255, 0.08);
+          padding: 2px 7px;
+          border-radius: 10px;
+          color: #81d4fa;
+          font-weight: 500;
+          white-space: nowrap;
+        }
+
+        .autocomplete-no-results {
+          padding: 12px;
+          font-size: 12px;
+          color: #78909c;
+          text-align: center;
+          font-style: italic;
+        }
       </style>
 
       <div class="header">
@@ -1513,6 +2063,21 @@ class SmartWakePanel extends HTMLElement {
         }
       };
     });
+
+    // Close open autocomplete dropdowns when clicking outside
+    const container = root.querySelector(".modal-container");
+    if (container) {
+      container.addEventListener("click", (e) => {
+        if (!e.target.closest(".entity-input-wrapper")) {
+          root.querySelectorAll(".entity-autocomplete-dropdown").forEach((dd) => {
+            dd.style.display = "none";
+          });
+        }
+      });
+    }
+
+    // Initialize Entity Autocomplete & Live Previews for all entity inputs
+    this._initEntityAutocompletes();
   }
 
   _renderBody() {
@@ -1762,18 +2327,10 @@ class SmartWakePanel extends HTMLElement {
             </label>
           </div>
 
-          <div class="form-group">
-            <label class="form-label" for="f_workday_entity">Workday Sensor Entity</label>
-            <input class="form-input" id="f_workday_entity" type="text" value="${cfg.workday_entity || ""}" placeholder="binary_sensor.workday_sensor" />
-            <span class="form-hint">Optional: Eigener Workday Sensor (Standard: binary_sensor.workday_sensor)</span>
-          </div>
+          ${this._renderEntityField("f_workday_entity", "Workday Sensor Entity", cfg.workday_entity, "binary_sensor.workday_sensor", "Optional: Eigener Workday Sensor (Standard: binary_sensor.workday_sensor)", "binary_sensor", false)}
 
           <div class="form-row">
-            <div class="form-group">
-              <label class="form-label" for="f_calendar_entity">Home Assistant Kalender Entity</label>
-              <input class="form-input" id="f_calendar_entity" type="text" value="${cfg.calendar_entity || ""}" placeholder="calendar.privat" />
-              <span class="form-hint">Optional: Kalender für Schichtpläne, Urlaub oder Schulferien</span>
-            </div>
+            ${this._renderEntityField("f_calendar_entity", "Home Assistant Kalender Entity", cfg.calendar_entity, "calendar.privat", "Optional: Kalender für Schichtpläne, Urlaub oder Schulferien", "calendar", false)}
             <div class="form-group">
               <label class="form-label" for="f_calendar_behavior">Kalender-Verhalten</label>
               <select class="form-select" id="f_calendar_behavior">
@@ -1796,18 +2353,11 @@ class SmartWakePanel extends HTMLElement {
             </label>
           </div>
 
-          <div class="form-group">
-            <label class="form-label" for="f_person_entities">Zugewiesene Personen (Kommagetrennt)</label>
-            <input class="form-input" id="f_person_entities" type="text" value="${cfg.person_entities || ""}" placeholder="person.vitali, person.anna" />
-            <span class="form-hint">Mindestens eine dieser Personen muss zu Hause sein</span>
-          </div>
+          ${this._renderEntityField("f_person_entities", "Zugewiesene Personen (Kommagetrennt)", cfg.person_entities, "person.vitali, person.anna", "Mindestens eine dieser Personen muss zu Hause sein", "person", true)}
 
           <div class="form-section-title">Dynamische Weckzeitverschiebung (Wetter & Schlaf)</div>
           <div class="form-row">
-            <div class="form-group">
-              <label class="form-label" for="f_weather_temp_entity">Außentemperatur-Sensor</label>
-              <input class="form-input" id="f_weather_temp_entity" type="text" value="${cfg.weather_temp_entity || ""}" placeholder="sensor.aussentemperatur" />
-            </div>
+            ${this._renderEntityField("f_weather_temp_entity", "Außentemperatur-Sensor", cfg.weather_temp_entity, "sensor.aussentemperatur", "Sensor für Frost-Erkennung", "sensor,weather", false)}
             <div class="form-group">
               <label class="form-label" for="f_weather_temp_threshold">Frost-Schwelle (°C)</label>
               <input class="form-input" id="f_weather_temp_threshold" type="number" step="0.5" value="${cfg.weather_temp_threshold ?? 0.0}" />
@@ -1820,10 +2370,7 @@ class SmartWakePanel extends HTMLElement {
               <input class="form-input" id="f_weather_temp_offset" type="number" value="${cfg.weather_temp_offset ?? 15}" />
               <span class="form-hint">Weckt X Minuten früher zum Scheiben kratzen</span>
             </div>
-            <div class="form-group">
-              <label class="form-label" for="f_weather_rain_entity">Regensensor Entity</label>
-              <input class="form-input" id="f_weather_rain_entity" type="text" value="${cfg.weather_rain_entity || ""}" placeholder="binary_sensor.regen" />
-            </div>
+            ${this._renderEntityField("f_weather_rain_entity", "Regensensor Entity", cfg.weather_rain_entity, "binary_sensor.regen", "Sensor für Regen-Offset", "binary_sensor,sensor,weather", false)}
           </div>
 
           <div class="form-row">
@@ -1831,11 +2378,7 @@ class SmartWakePanel extends HTMLElement {
               <label class="form-label" for="f_weather_rain_offset">Regen-Offset (Minuten)</label>
               <input class="form-input" id="f_weather_rain_offset" type="number" value="${cfg.weather_rain_offset ?? 10}" />
             </div>
-            <div class="form-group">
-              <label class="form-label" for="f_sleep_stage_entity">Sleep-Tracker Sensor</label>
-              <input class="form-input" id="f_sleep_stage_entity" type="text" value="${cfg.sleep_stage_entity || ""}" placeholder="sensor.withings_sleep_stage" />
-              <span class="form-hint">Löst in Leichtschlafphase innerhalb von ${cfg.sleep_stage_window || 30} Min vor Weckzeit aus</span>
-            </div>
+            ${this._renderEntityField("f_sleep_stage_entity", "Sleep-Tracker Sensor", cfg.sleep_stage_entity, "sensor.withings_sleep_stage", "Löst in Leichtschlafphase innerhalb von " + (cfg.sleep_stage_window || 30) + " Min vor Weckzeit aus", "sensor,binary_sensor", false)}
           </div>
         `;
 
@@ -1859,10 +2402,7 @@ class SmartWakePanel extends HTMLElement {
           </div>
 
           <div class="form-section-title">Licht-Transition</div>
-          <div class="form-group">
-            <label class="form-label" for="f_pre_alarm_light_entities">Dimmbare Licht-Entities (Kommagetrennt)</label>
-            <input class="form-input" id="f_pre_alarm_light_entities" type="text" value="${cfg.pre_alarm_light_entities || ""}" placeholder="light.nachttisch_links, light.nachttisch_rechts" />
-          </div>
+          ${this._renderEntityField("f_pre_alarm_light_entities", "Dimmbare Licht-Entities (Kommagetrennt)", cfg.pre_alarm_light_entities, "light.nachttisch_links, light.nachttisch_rechts", "Leuchten für sanften Sonnenaufgang-Fade-in", "light", true)}
 
           <div class="form-row">
             <div class="form-group">
@@ -1877,10 +2417,7 @@ class SmartWakePanel extends HTMLElement {
 
           <div class="form-section-title">Heizung & Rollos</div>
           <div class="form-row">
-            <div class="form-group">
-              <label class="form-label" for="f_pre_alarm_climate_entities">Klima / Thermostat-Entities</label>
-              <input class="form-input" id="f_pre_alarm_climate_entities" type="text" value="${cfg.pre_alarm_climate_entities || ""}" placeholder="climate.schlafzimmer" />
-            </div>
+            ${this._renderEntityField("f_pre_alarm_climate_entities", "Klima / Thermostat-Entities", cfg.pre_alarm_climate_entities, "climate.schlafzimmer", "Thermostate zum sanften Anheben der Raumtemperatur", "climate", true)}
             <div class="form-group">
               <label class="form-label" for="f_pre_alarm_climate_temp_delta">Temperaturanhebung (°C)</label>
               <input class="form-input" id="f_pre_alarm_climate_temp_delta" type="number" step="0.5" value="${cfg.pre_alarm_climate_temp_delta ?? 2.0}" />
@@ -1888,10 +2425,7 @@ class SmartWakePanel extends HTMLElement {
           </div>
 
           <div class="form-row">
-            <div class="form-group">
-              <label class="form-label" for="f_pre_alarm_cover_entities">Rollos / Jalousien Entities</label>
-              <input class="form-input" id="f_pre_alarm_cover_entities" type="text" value="${cfg.pre_alarm_cover_entities || ""}" placeholder="cover.schlafzimmer" />
-            </div>
+            ${this._renderEntityField("f_pre_alarm_cover_entities", "Rollos / Jalousien Entities", cfg.pre_alarm_cover_entities, "cover.schlafzimmer", "Z. B. 20% für sanftes Kippen der Lamellen", "cover", true)}
             <div class="form-group">
               <label class="form-label" for="f_pre_alarm_cover_position">Zielposition (% geöffnet)</label>
               <input class="form-input" id="f_pre_alarm_cover_position" type="number" min="0" max="100" value="${cfg.pre_alarm_cover_position ?? 20}" />
@@ -1899,20 +2433,13 @@ class SmartWakePanel extends HTMLElement {
             </div>
           </div>
 
-          <div class="form-group">
-            <label class="form-label" for="f_pre_alarm_script_entity">Optionales Pre-Alarm Skript</label>
-            <input class="form-input" id="f_pre_alarm_script_entity" type="text" value="${cfg.pre_alarm_script_entity || ""}" placeholder="script.pre_alarm_custom" />
-          </div>
+          ${this._renderEntityField("f_pre_alarm_script_entity", "Optionales Pre-Alarm Skript", cfg.pre_alarm_script_entity, "script.pre_alarm_custom", "HA-Skript, das zu Beginn von Phase 1 ausgeführt wird", "script", false)}
         `;
 
       case "phase2":
         return `
           <div class="form-section-title">Media Player & Audio</div>
-          <div class="form-group">
-            <label class="form-label" for="f_main_media_player_entities">Media Player Entities (Kommagetrennt)</label>
-            <input class="form-input" id="f_main_media_player_entities" type="text" value="${cfg.main_media_player_entities || ""}" placeholder="media_player.schlafzimmer_speaker" />
-            <span class="form-hint">Lautsprecher, auf denen der Wecker ertönen soll</span>
-          </div>
+          ${this._renderEntityField("f_main_media_player_entities", "Media Player Entities (Kommagetrennt)", cfg.main_media_player_entities, "media_player.schlafzimmer_speaker", "Lautsprecher, auf denen der Wecker ertönen soll", "media_player", true)}
 
           <div class="form-row">
             <div class="form-group">
@@ -1967,14 +2494,8 @@ class SmartWakePanel extends HTMLElement {
           </div>
 
           <div class="form-row">
-            <div class="form-group">
-              <label class="form-label" for="f_main_tts_engine">TTS Engine Entity (Optional)</label>
-              <input class="form-input" id="f_main_tts_engine" type="text" value="${cfg.main_tts_engine || ""}" placeholder="tts.google_en_com oder tts.piper" />
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="f_main_script_entity">Optionales Hauptalarm Skript</label>
-              <input class="form-input" id="f_main_script_entity" type="text" value="${cfg.main_script_entity || ""}" placeholder="script.guten_morgen" />
-            </div>
+            ${this._renderEntityField("f_main_tts_engine", "TTS Engine Entity (Optional)", cfg.main_tts_engine, "tts.google_en_com oder tts.piper", "Text-to-Speech Engine für Sprachansage", "tts", false)}
+            ${this._renderEntityField("f_main_script_entity", "Optionales Hauptalarm Skript", cfg.main_script_entity, "script.guten_morgen", "HA-Skript für den Hauptweckruf", "script", false)}
           </div>
         `;
 
@@ -2015,26 +2536,17 @@ class SmartWakePanel extends HTMLElement {
             </label>
           </div>
 
-          <div class="form-group">
-            <label class="form-label" for="f_escalation_light_entities">Licht-Entities für Eskalation</label>
-            <input class="form-input" id="f_escalation_light_entities" type="text" value="${cfg.escalation_light_entities || ""}" placeholder="light.schlafzimmer_hauptlicht" />
-          </div>
+          ${this._renderEntityField("f_escalation_light_entities", "Licht-Entities für Eskalation", cfg.escalation_light_entities, "light.schlafzimmer_hauptlicht", "Hauptbeleuchtung, die bei Eskalation eingeschaltet wird", "light", true)}
 
           <div class="form-row">
-            <div class="form-group">
-              <label class="form-label" for="f_escalation_cover_entities">Rollos für Eskalation</label>
-              <input class="form-input" id="f_escalation_cover_entities" type="text" value="${cfg.escalation_cover_entities || ""}" placeholder="cover.schlafzimmer_rollo" />
-            </div>
+            ${this._renderEntityField("f_escalation_cover_entities", "Rollos für Eskalation", cfg.escalation_cover_entities, "cover.schlafzimmer_rollo", "Rollos, die bei Eskalation komplett hochfahren", "cover", true)}
             <div class="form-group">
               <label class="form-label" for="f_escalation_cover_position">Zielposition (% geöffnet)</label>
               <input class="form-input" id="f_escalation_cover_position" type="number" min="0" max="100" value="${cfg.escalation_cover_position ?? 100}" />
             </div>
           </div>
 
-          <div class="form-group">
-            <label class="form-label" for="f_escalation_script_entity">Optionales Eskalations-Skript</label>
-            <input class="form-input" id="f_escalation_script_entity" type="text" value="${cfg.escalation_script_entity || ""}" placeholder="script.alarm_escalation" />
-          </div>
+          ${this._renderEntityField("f_escalation_script_entity", "Optionales Eskalations-Skript", cfg.escalation_script_entity, "script.alarm_escalation", "HA-Skript für Eskalations-Aktionen", "script", false)}
         `;
 
       case "anti_cheat":
@@ -2055,22 +2567,12 @@ class SmartWakePanel extends HTMLElement {
 
           <div class="form-section-title">Hardware-Taster (Zigbee / Z-Wave)</div>
           <div class="form-row">
-            <div class="form-group">
-              <label class="form-label" for="f_snooze_button_entity">Snooze-Taster Entity (1x Klick)</label>
-              <input class="form-input" id="f_snooze_button_entity" type="text" value="${cfg.snooze_button_entity || ""}" placeholder="event.nachttisch_taster" />
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="f_dismiss_button_entity">Dismiss-Taster Entity (2x Klick)</label>
-              <input class="form-input" id="f_dismiss_button_entity" type="text" value="${cfg.dismiss_button_entity || ""}" placeholder="event.nachttisch_taster_double" />
-            </div>
+            ${this._renderEntityField("f_snooze_button_entity", "Snooze-Taster Entity (1x Klick)", cfg.snooze_button_entity, "event.nachttisch_taster", "Hardware-Taster für Schlummern (Event, Button oder Sensor)", "event,button,sensor,binary_sensor", false)}
+            ${this._renderEntityField("f_dismiss_button_entity", "Dismiss-Taster Entity (2x Klick)", cfg.dismiss_button_entity, "event.nachttisch_taster_double", "Hardware-Taster für Quittieren (Event, Button oder Sensor)", "event,button,sensor,binary_sensor", false)}
           </div>
 
           <div class="form-section-title">Anti-Cheat Aufsteh-Beweis</div>
-          <div class="form-group">
-            <label class="form-label" for="f_dismiss_motion_entities">Bewegungsmelder Badezimmer / Küche</label>
-            <input class="form-input" id="f_dismiss_motion_entities" type="text" value="${cfg.dismiss_motion_entities || ""}" placeholder="binary_sensor.bad_motion, binary_sensor.kueche_motion" />
-            <span class="form-hint">Quittiert den Wecker automatisch bei Bewegung im Bad/Küche</span>
-          </div>
+          ${this._renderEntityField("f_dismiss_motion_entities", "Bewegungsmelder Badezimmer / Küche", cfg.dismiss_motion_entities, "binary_sensor.bad_motion, binary_sensor.kueche_motion", "Quittiert automatisch bei Bewegung im Bad oder in der Küche", "binary_sensor,sensor", true)}
 
           <div class="form-group">
             <label class="form-label" for="f_dismiss_nfc_tags">NFC Tag IDs (Spiegel / Kaffeemaschine)</label>
@@ -2079,10 +2581,7 @@ class SmartWakePanel extends HTMLElement {
           </div>
 
           <div class="form-row">
-            <div class="form-group">
-              <label class="form-label" for="f_dismiss_power_sensor">Leistungssensor (Kaffeemaschine / Bad)</label>
-              <input class="form-input" id="f_dismiss_power_sensor" type="text" value="${cfg.dismiss_power_sensor || ""}" placeholder="sensor.kaffeemaschine_leistung" />
-            </div>
+            ${this._renderEntityField("f_dismiss_power_sensor", "Leistungssensor (Kaffeemaschine / Bad)", cfg.dismiss_power_sensor, "sensor.kaffeemaschine_leistung", "Quittiert bei Stromverbrauch über Schwellenwert", "sensor", false)}
             <div class="form-group">
               <label class="form-label" for="f_dismiss_power_threshold">Leistungsschwelle (Watt)</label>
               <input class="form-input" id="f_dismiss_power_threshold" type="number" step="1" value="${cfg.dismiss_power_threshold ?? 10.0}" />
