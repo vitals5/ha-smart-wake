@@ -192,8 +192,12 @@ class MockConfigFlow:
         return {"type": "menu", "step_id": step_id, "menu_options": menu_options}
 
 class MockOptionsFlow:
-    def __init__(self, entry):
-        self.config_entry = entry
+    def __init__(self, entry=None):
+        self._config_entry = entry
+
+    @property
+    def config_entry(self):
+        return getattr(self, "_config_entry", None)
     def async_create_entry(self, title, data):
         return {"type": "create_entry", "title": title, "data": data}
     def async_show_form(self, step_id, data_schema, errors=None):

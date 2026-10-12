@@ -103,6 +103,28 @@ class TestSmartWakeConfigFlow(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(p1_save["type"], "create_entry")
         self.assertFalse(flow._options[CONF_PRE_ALARM_ENABLED])
 
+    async def test_options_flow_readonly_property_init(self) -> None:
+        """Test options flow instantiation when config_entry is a read-only property."""
+        class MockModernOptionsFlow(SmartWakeOptionsFlowHandler):
+            @property
+            def config_entry(self):
+                mock_entry = MagicMock()
+                mock_entry.data = {CONF_NAME: "Modern Wecker", CONF_TIME: "07:00"}
+                mock_entry.options = {}
+                return mock_entry
+
+        # Instantiation without passing config_entry (or passing it) must not trigger AttributeError
+        flow = MockModernOptionsFlow()
+        flow.hass = self.hass
+
+        menu_res = await flow.async_step_init()
+        self.assertEqual(menu_res["type"], "menu")
+        self.assertEqual(flow._options[CONF_TIME], "07:00")
+
+        # Also when instantiated with entry argument
+        flow2 = MockModernOptionsFlow(MagicMock(data={CONF_TIME: "09:00"}, options={}))
+        self.assertEqual(flow2._options[CONF_TIME], "09:00")
+
 
 if __name__ == "__main__":
     unittest.main()

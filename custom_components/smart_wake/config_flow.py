@@ -40,7 +40,11 @@ except Exception:
 
         class OptionsFlow:
             def __init__(self, entry=None):
-                self.config_entry = entry
+                self._config_entry = entry
+
+            @property
+            def config_entry(self):
+                return getattr(self, "_config_entry", None)
             def async_create_entry(self, title, data):
                 return {"type": "create_entry", "title": title, "data": data}
             def async_show_form(self, step_id, data_schema, errors=None):
@@ -264,15 +268,30 @@ class SmartWakeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class SmartWakeOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow for detailed Smart Wake alarm configuration."""
 
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+    def __init__(self, config_entry: config_entries.ConfigEntry | None = None) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
-        self._options: dict[str, Any] = dict(config_entry.options or config_entry.data)
+        self._config_entry = config_entry
+        self._options: dict[str, Any] = {}
+        if config_entry is not None:
+            self._options = dict(config_entry.options or config_entry.data)
+
+    def _init_options(self) -> None:
+        """Initialize options dictionary from config entry if not already set."""
+        if not self._options:
+            entry = self._config_entry
+            if entry is None:
+                try:
+                    entry = self.config_entry
+                except Exception:
+                    entry = None
+            if entry is not None:
+                self._options = dict(entry.options or entry.data)
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Display options navigation menu."""
+        self._init_options()
         return self.async_show_menu(
             step_id="init",
             menu_options=[
@@ -290,6 +309,7 @@ class SmartWakeOptionsFlowHandler(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Configure scheduling, workdays and calendar filters."""
+        self._init_options()
         if user_input is not None:
             self._options.update(user_input)
             return self.async_create_entry(title="", data=self._options)
@@ -344,6 +364,7 @@ class SmartWakeOptionsFlowHandler(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Configure presence gating and weather/sleep dynamic shift."""
+        self._init_options()
         if user_input is not None:
             self._options.update(user_input)
             return self.async_create_entry(title="", data=self._options)
@@ -421,6 +442,7 @@ class SmartWakeOptionsFlowHandler(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Configure Phase 1: Pre-Alarm soft wake actions."""
+        self._init_options()
         if user_input is not None:
             self._options.update(user_input)
             return self.async_create_entry(title="", data=self._options)
@@ -510,6 +532,7 @@ class SmartWakeOptionsFlowHandler(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Configure Phase 2: Main Alarm audio, TTS and script actions."""
+        self._init_options()
         if user_input is not None:
             self._options.update(user_input)
             return self.async_create_entry(title="", data=self._options)
@@ -577,6 +600,7 @@ class SmartWakeOptionsFlowHandler(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Configure Phase 3: Escalation mode anti-oversleep."""
+        self._init_options()
         if user_input is not None:
             self._options.update(user_input)
             return self.async_create_entry(title="", data=self._options)
@@ -650,6 +674,7 @@ class SmartWakeOptionsFlowHandler(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Configure snooze duration, max snooze limit and anti-cheat dismiss triggers."""
+        self._init_options()
         if user_input is not None:
             self._options.update(user_input)
             return self.async_create_entry(title="", data=self._options)
