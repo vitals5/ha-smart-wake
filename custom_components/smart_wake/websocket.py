@@ -47,21 +47,25 @@ except Exception:
     dt_util = MockDtUtil()
 
 from .const import (
+    CONF_DAYS,
     CONF_DISMISS_BUTTON_ENTITY,
     CONF_DISMISS_MOTION_ENTITIES,
     CONF_DISMISS_NFC_TAGS,
     CONF_DISMISS_POWER_SENSOR,
+    CONF_ENABLED,
     CONF_ESCALATION_DELAY,
     CONF_ESCALATION_VOLUME,
     CONF_MAIN_AUDIO_CONTENT_ID,
     CONF_MAIN_MEDIA_PLAYER_ENTITIES,
     CONF_MAIN_TTS_ENABLED,
+    CONF_NAME,
     CONF_PERSON_ENTITIES,
     CONF_PERSON_HOME_REQUIRED,
     CONF_PRE_ALARM_CLIMATE_ENTITIES,
     CONF_PRE_ALARM_COVER_ENTITIES,
     CONF_PRE_ALARM_DURATION,
     CONF_PRE_ALARM_LIGHT_ENTITIES,
+    CONF_TIME,
     CONF_WEATHER_TEMP_ENTITY,
     CONF_WORKDAY_ENTITY,
     CONF_WORKDAY_ONLY,
@@ -122,6 +126,7 @@ def _serialize_alarm(alarm: SmartWakeAlarm) -> dict[str, Any]:
         "is_dry_run": alarm.is_dry_run,
         "dry_run_progress": alarm.dry_run_progress,
         "skip_next": alarm.skip_next,
+        "config": dict(cfg),
         "config_summary": {
             "workday_only": cfg.get(CONF_WORKDAY_ONLY, False),
             "workday_entity": cfg.get(CONF_WORKDAY_ENTITY),
@@ -295,6 +300,121 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
         alarm.set_skip_next(skip_val)
         connection.send_result(msg["id"], {"success": True, "alarm": _serialize_alarm(alarm)})
 
+    # 9. smart_wake/update_config
+    @websocket_api.websocket_command({
+        vol.Required("type"): "smart_wake/update_config",
+        vol.Required("alarm_id"): str,
+        vol.Required("config"): dict,
+    })
+    @websocket_api.async_response
+    async def ws_update_config(
+        hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+    ) -> None:
+        """Handle updating full alarm configuration from side-panel dashboard."""
+        alarm = _get_alarm(msg["alarm_id"])
+        if not alarm:
+            connection.send_error(msg["id"], "alarm_not_found", "Alarm instance not found")
+            return
+
+        new_config_data = dict(msg["config"])
+        entry = None
+        if hasattr(hass, "config_entries") and hasattr(hass.config_entries, "async_get_entry"):
+            entry = hass.config_entries.async_get_entry(alarm.entry_id)
+
+        if entry:
+            new_options = dict(getattr(entry, "options", {}))
+            new_options.update(new_config_data)
+            hass.config_entries.async_update_entry(entry, options=new_options)
+
+        alarm.update_config(new_config_data)
+        if hasattr(hass, "bus"):
+            hass.bus.async_fire("smart_wake_status_changed", {"alarm_id": alarm.entry_id})
+
+        connection.send_result(msg["id"], {"success": True, "alarm": _serialize_alarm(alarm)})
+
+    # 10. smart_wake/create_alarm
+    @websocket_api.websocket_command({
+        vol.Required("type"): "smart_wake/create_alarm",
+        vol.Required("name"): str,
+        vol.Optional("time", default="06:30"): str,
+        vol.Optional("days", default=["mon", "tue", "wed", "thu", "fri"]): list,
+        vol.Optional("enabled", default=True): bool,
+        vol.Optional("config", default={}): dict,
+    })
+    @websocket_api.async_response
+    async def ws_create_alarm(
+        hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+    ) -> None:
+        """Handle creating a new alarm instance directly from side-panel."""
+        name = msg["name"].strip()
+        if not name:
+            connection.send_error(msg["id"], "invalid_name", "Alarm name cannot be empty")
+            return
+
+        domain_data: dict[str, SmartWakeAlarm] = hass.data.get(DOMAIN, {})
+        for existing in domain_data.values():
+            if existing.name.lower() == name.lower():
+                connection.send_error(msg["id"], "already_exists", f"Alarm with name '{name}' already exists")
+                return
+
+        initial_data = {
+            CONF_NAME: name,
+            CONF_TIME: msg.get("time", "06:30"),
+            CONF_DAYS: msg.get("days", ["mon", "tue", "wed", "thu", "fri"]),
+            CONF_ENABLED: msg.get("enabled", True),
+        }
+        if msg.get("config"):
+            initial_data.update(msg["config"])
+
+        if hasattr(hass, "config_entries") and hasattr(hass.config_entries, "flow"):
+            await hass.config_entries.flow.async_init(
+                DOMAIN,
+                context={"source": "user"},
+                data=initial_data,
+            )
+
+        # Retrieve the newly created alarm coordinator
+        created_alarm = None
+        for a in hass.data.get(DOMAIN, {}).values():
+            if a.name.lower() == name.lower():
+                created_alarm = a
+                break
+
+        if hasattr(hass, "bus"):
+            hass.bus.async_fire("smart_wake_status_changed", {})
+
+        connection.send_result(
+            msg["id"],
+            {
+                "success": True,
+                "alarm": _serialize_alarm(created_alarm) if created_alarm else None,
+            },
+        )
+
+    # 11. smart_wake/delete_alarm
+    @websocket_api.websocket_command({
+        vol.Required("type"): "smart_wake/delete_alarm",
+        vol.Required("alarm_id"): str,
+    })
+    @websocket_api.async_response
+    async def ws_delete_alarm(
+        hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+    ) -> None:
+        """Handle deleting an alarm instance from side-panel."""
+        alarm = _get_alarm(msg["alarm_id"])
+        if not alarm:
+            connection.send_error(msg["id"], "alarm_not_found", "Alarm instance not found")
+            return
+
+        entry_id = alarm.entry_id
+        if hasattr(hass, "config_entries") and hasattr(hass.config_entries, "async_remove"):
+            await hass.config_entries.async_remove(entry_id)
+
+        if hasattr(hass, "bus"):
+            hass.bus.async_fire("smart_wake_status_changed", {})
+
+        connection.send_result(msg["id"], {"success": True, "deleted_id": entry_id})
+
     if hasattr(websocket_api, "async_register_command"):
         websocket_api.async_register_command(hass, ws_get_alarms)
         websocket_api.async_register_command(hass, ws_test_alarm)
@@ -304,3 +424,6 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
         websocket_api.async_register_command(hass, ws_toggle)
         websocket_api.async_register_command(hass, ws_set_time)
         websocket_api.async_register_command(hass, ws_skip_next)
+        websocket_api.async_register_command(hass, ws_update_config)
+        websocket_api.async_register_command(hass, ws_create_alarm)
+        websocket_api.async_register_command(hass, ws_delete_alarm)

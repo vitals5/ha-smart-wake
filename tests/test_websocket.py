@@ -44,11 +44,43 @@ class TestSmartWakeWebSocket(unittest.IsolatedAsyncioTestCase):
 
     async def test_websocket_commands_registration(self) -> None:
         """Test registration of all websocket commands."""
-        registered_cmds = []
+        registered_cmds = {}
 
-        with unittest.mock.patch("custom_components.smart_wake.websocket.websocket_api.async_register_command") as mock_reg:
+        def mock_register(hass, func):
+            registered_cmds[func.__name__] = func
+
+        with unittest.mock.patch("custom_components.smart_wake.websocket.websocket_api.async_register_command", side_effect=mock_register):
             async_register_websocket_api(self.hass)
-            self.assertGreaterEqual(mock_reg.call_count, 5)
+            self.assertGreaterEqual(len(registered_cmds), 11)
+            self.assertIn("ws_update_config", registered_cmds)
+            self.assertIn("ws_create_alarm", registered_cmds)
+            self.assertIn("ws_delete_alarm", registered_cmds)
+
+            # Test update_config
+            conn = MagicMock()
+            msg = {"id": 1, "alarm_id": "entry_ws", "config": {"time": "07:15", "workday_only": True}}
+            await registered_cmds["ws_update_config"](self.hass, conn, msg)
+            conn.send_result.assert_called_once()
+            res = conn.send_result.call_args[0][1]
+            self.assertTrue(res["success"])
+            self.assertEqual(res["alarm"]["time"], "07:15")
+
+            # Test create_alarm
+            conn_create = MagicMock()
+            msg_create = {"id": 2, "name": "Neuer Wecker", "time": "08:00"}
+            await registered_cmds["ws_create_alarm"](self.hass, conn_create, msg_create)
+            conn_create.send_result.assert_called_once()
+            res_create = conn_create.send_result.call_args[0][1]
+            self.assertTrue(res_create["success"])
+
+            # Test delete_alarm
+            conn_del = MagicMock()
+            msg_del = {"id": 3, "alarm_id": "entry_ws"}
+            await registered_cmds["ws_delete_alarm"](self.hass, conn_del, msg_del)
+            conn_del.send_result.assert_called_once()
+            res_del = conn_del.send_result.call_args[0][1]
+            self.assertTrue(res_del["success"])
+            self.assertEqual(res_del["deleted_id"], "entry_ws")
 
 
 if __name__ == "__main__":

@@ -47,6 +47,11 @@ class MockHomeAssistant:
         self.config_entries = MagicMock()
         self.config_entries.async_forward_entry_setups = AsyncMock()
         self.config_entries.async_unload_platforms = AsyncMock(return_value=True)
+        self.config_entries.async_get_entry = MagicMock(return_value=None)
+        self.config_entries.async_update_entry = MagicMock()
+        self.config_entries.async_remove = AsyncMock(return_value={"require_restart": False})
+        self.config_entries.flow = MagicMock()
+        self.config_entries.flow.async_init = AsyncMock(return_value={"type": "create_entry"})
         self.loop = MagicMock()
         self.is_running = True
 

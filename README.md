@@ -180,6 +180,7 @@ Die Integration registriert automatisch ein eigenes Icon in der Seitenleiste von
 ```
 
 * **Live-Status-Monitoring:** Countdown bis zum nächsten Alarm unter Berücksichtigung aller Wetter-Offsets.
+* **In-Panel Konfiguration:** Alle Einstellungen (Allgemein, Bedingungen, Phasen 1-3, Quittierung & Anti-Cheat) sowie das Anlegen und Löschen von Weckern können komfortabel direkt im Side Panel vorgenommen werden – ohne Umweg über das HA-Einstellungsmenü!
 * **Testlauf-Modus (Dry-Run):** 30-Sekunden-Zeitraffer-Testlauf mit Live-Balkenanzeige, um Licht-Fade, Lautstärken und Rollo-Steuerung risikolos zu prüfen.
 * **Direkt-Aktionen:** Schnelles Umschalten, Schlummern und Quittieren direkt im Browser.
 
