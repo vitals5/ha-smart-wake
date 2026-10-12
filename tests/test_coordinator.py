@@ -445,10 +445,11 @@ class TestSmartWakeCoordinator(unittest.IsolatedAsyncioTestCase):
         alarm = SmartWakeAlarm(self.hass, "test_btn_events", cfg)
         alarm._status = STATUS_RINGING
 
+        from homeassistant.helpers.event import async_track_state_change_event
+        async_track_state_change_event.reset_mock()
+
         # Setup listeners
         alarm._setup_active_alarm_listeners()
-
-        from homeassistant.helpers.event import async_track_state_change_event
 
         # Find the registered state change listener callback
         track_call = None
@@ -459,7 +460,7 @@ class TestSmartWakeCoordinator(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNotNone(track_call, "button state change listener should be registered")
 
-        # 1. Single click on button -> Snoozes alarm
+        # 1. Single click on button (keyword state) -> Snoozes alarm
         event_single = MagicMock()
         event_single.data = {
             "entity_id": "event.bedside_btn",
@@ -472,15 +473,89 @@ class TestSmartWakeCoordinator(unittest.IsolatedAsyncioTestCase):
         # 2. Re-trigger ringing
         alarm._status = STATUS_RINGING
 
-        # 3. Double click on button -> Dismisses alarm
+        # 3. Single click on button with HA ISO timestamp state containing '2026' -> MUST Snooze, NOT Dismiss!
+        event_timestamp_single = MagicMock()
+        event_timestamp_single.data = {
+            "entity_id": "event.bedside_btn",
+            "new_state": MagicMock(
+                state="2026-10-12T20:14:00.123456+00:00",
+                attributes={"event_type": "press"},
+            ),
+        }
+        track_call(event_timestamp_single)
+        await asyncio.sleep(0.01)
+        self.assertEqual(alarm.status, STATUS_SNOOZED, "Timestamp with '2026' must NOT falsely trigger double-click dismiss")
+
+        # 4. Release / empty state transition (e.g. Zigbee clear after 500ms) -> Ignored, stays snoozed
+        event_reset = MagicMock()
+        event_reset.data = {
+            "entity_id": "event.bedside_btn",
+            "new_state": MagicMock(state="", attributes={}),
+        }
+        track_call(event_reset)
+        await asyncio.sleep(0.01)
+        self.assertEqual(alarm.status, STATUS_SNOOZED)
+
+        # 5. Re-trigger ringing
+        alarm._status = STATUS_RINGING
+
+        # 6. Double click on button -> Dismisses alarm
         event_double = MagicMock()
         event_double.data = {
             "entity_id": "event.bedside_btn",
-            "new_state": MagicMock(state="double", attributes={"event_type": "double"}),
+            "new_state": MagicMock(
+                state="2026-10-12T20:14:05.123456+00:00",
+                attributes={"event_type": "double_press"},
+            ),
         }
         track_call(event_double)
         await asyncio.sleep(0.01)
         self.assertEqual(alarm.status, STATUS_IDLE)
+
+    async def test_hardware_button_during_test_run(self) -> None:
+        """Test hardware button single click activates snooze during full test run and dry run."""
+        from homeassistant.helpers.event import async_track_state_change_event
+        async_track_state_change_event.reset_mock()
+
+        cfg = dict(self.config)
+        cfg[CONF_DISMISS_BUTTON_ENTITY] = "event.bedside_btn"
+        alarm = SmartWakeAlarm(self.hass, "test_btn_in_test_run", cfg)
+
+        # 1. Full test run
+        await alarm.async_start_full_test(start_from_pre_alarm=False, snooze_seconds=30)
+        self.assertEqual(alarm.status, STATUS_RINGING)
+        self.assertTrue(alarm.is_full_test)
+
+        # Find registered listener
+        track_call = None
+        for call in async_track_state_change_event.call_args_list:
+            if "event.bedside_btn" in call[0][1]:
+                track_call = call[0][2]
+                break
+        self.assertIsNotNone(track_call)
+
+        # Button 1x click with ISO timestamp -> Snooze!
+        event_click = MagicMock()
+        event_click.data = {
+            "entity_id": "event.bedside_btn",
+            "new_state": MagicMock(state="2026-10-12T20:15:00+00:00", attributes={"event_type": "press"}),
+        }
+        track_call(event_click)
+        await asyncio.sleep(0.01)
+        self.assertEqual(alarm.status, STATUS_SNOOZED)
+        self.assertTrue(alarm.is_full_test)
+        self.assertIsNotNone(alarm.snooze_until)
+
+        # 2. Dry run test
+        alarm._status = STATUS_IDLE
+        alarm._is_full_test = False
+        await alarm.async_start_dry_run()
+        alarm._status = STATUS_RINGING  # In dry run Phase 2
+
+        track_call(event_click)
+        await asyncio.sleep(0.01)
+        self.assertEqual(alarm.status, STATUS_SNOOZED)
+        self.assertIsNone(alarm._unsub_dry_run)  # Dry run loop cancelled on snooze
 
 
 if __name__ == "__main__":

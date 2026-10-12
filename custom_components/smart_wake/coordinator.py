@@ -847,6 +847,10 @@ class SmartWakeAlarm:
         elif self._is_full_test and self._full_test_snooze_seconds is not None:
             delay_seconds = self._full_test_snooze_seconds
             display_duration = max(1, self._full_test_snooze_seconds // 60)
+        elif self._is_dry_run:
+            self._cancel_dry_run()
+            delay_seconds = 10
+            display_duration = 1
         else:
             delay_seconds = self.snooze_duration * 60
             display_duration = self.snooze_duration
@@ -937,6 +941,9 @@ class SmartWakeAlarm:
     async def _dismiss_final(self) -> bool:
         """Execute final dismissal, cleaning up state and timers."""
         _LOGGER.info("Smart Wake [%s] dismissed", self._name)
+        if self._is_dry_run:
+            self._cancel_dry_run()
+            self._is_dry_run = False
         self._is_full_test = False
         self._full_test_snooze_seconds = None
         self._anti_cheat_nfc_scanned = False
@@ -1102,31 +1109,67 @@ class SmartWakeAlarm:
                 if not new_state:
                     return
                 ent_id = getattr(new_state, "entity_id", "")
-                val = getattr(new_state, "state", "").lower()
-                event_type = str(getattr(new_state, "attributes", {}).get("event_type", "")).lower()
+                val = str(getattr(new_state, "state", "")).lower().strip()
 
-                is_double = any(x in val for x in ("double", "2", "triple", "multi", "hold", "long")) or any(x in event_type for x in ("double", "2", "triple", "multi", "hold", "long"))
-                is_single = any(x in val for x in ("single", "1", "click", "press", "short", "toggle")) or any(x in event_type for x in ("single", "1", "click", "press", "short", "toggle"))
+                # Ignore transient/empty or release state transitions
+                if not val or val in ("", "unavailable", "unknown", "none", "null", "off", "idle", "standby", "released", "clear"):
+                    return
 
-                # 1. Double click -> Dismiss
+                # Detect if state is an ISO timestamp (e.g. event.*, button.* platforms in Home Assistant)
+                is_timestamp = (
+                    any(val.startswith(y) for y in ("19", "20"))
+                    and ("-" in val or ":" in val or "t" in val)
+                )
+
+                attrs = getattr(new_state, "attributes", {}) or {}
+                action_candidates = [
+                    str(attrs.get("event_type", "")),
+                    str(attrs.get("action", "")),
+                    str(attrs.get("click", "")),
+                    str(attrs.get("command", "")),
+                    str(attrs.get("event", "")),
+                    str(attrs.get("press_type", "")),
+                    str(attrs.get("subtype", "")),
+                ]
+                if not is_timestamp:
+                    action_candidates.append(val)
+
+                action_text = " ".join([c for c in action_candidates if c]).lower().strip()
+                words = [w for w in action_text.replace("_", " ").replace("-", " ").split() if w]
+
+                # Double click / multi / hold check (keywords or standalone number 2)
+                is_double = (
+                    any(kw in action_text for kw in ("double", "triple", "multi", "hold", "long", "2_single", "2_click"))
+                    or "2" in words
+                )
+
+                # Single click check (keywords, standalone number 1, or default when no special action payload exists)
+                is_single = (
+                    any(kw in action_text for kw in ("single", "click", "press", "short", "toggle", "on", "1_single", "1_click"))
+                    or "1" in words
+                    or not action_text
+                )
+
+                # 1. Double click / Hold -> Dismiss
                 if is_double:
-                    _LOGGER.info("Smart Wake [%s] Double-click detected on %s -> Dismiss", self._name, ent_id)
+                    _LOGGER.info("Smart Wake [%s] Double-click / Hold detected on %s -> Dismiss", self._name, ent_id)
                     self.hass.async_create_task(self.async_dismiss(forced=False))
-                # 2. Single click -> Snooze
-                elif is_single:
-                    _LOGGER.info("Smart Wake [%s] Single-click detected on %s -> Snooze", self._name, ent_id)
-                    self.hass.async_create_task(self.async_snooze())
-                # 3. Specific entities
-                elif ent_id == btn_snooze:
-                    _LOGGER.info("Smart Wake [%s] Snooze button triggered on %s -> Snooze", self._name, ent_id)
-                    self.hass.async_create_task(self.async_snooze())
-                elif ent_id == btn_dismiss:
-                    if btn_snooze and btn_dismiss == btn_snooze:
-                        _LOGGER.info("Smart Wake [%s] Shared button pressed -> Defaulting to Snooze (use double-click to Dismiss)", self._name)
-                        self.hass.async_create_task(self.async_snooze())
-                    else:
-                        _LOGGER.info("Smart Wake [%s] Dismiss button triggered on %s -> Dismiss", self._name, ent_id)
+                    return
+
+                # 2. Not a double-click: this is a Single Click / Press -> Snooze
+                # Check if dedicated distinct buttons are configured for snooze and dismiss
+                if btn_snooze and btn_dismiss and btn_snooze != btn_dismiss:
+                    if ent_id == btn_dismiss:
+                        _LOGGER.info("Smart Wake [%s] Dedicated Dismiss button triggered on %s -> Dismiss", self._name, ent_id)
                         self.hass.async_create_task(self.async_dismiss(forced=False))
+                    else:
+                        _LOGGER.info("Smart Wake [%s] Dedicated Snooze button triggered on %s -> Snooze", self._name, ent_id)
+                        self.hass.async_create_task(self.async_snooze())
+                else:
+                    # Shared button (or single button configured in either field):
+                    # 1x click ALWAYS snoozes!
+                    _LOGGER.info("Smart Wake [%s] Single click on button %s -> Snooze", self._name, ent_id)
+                    self.hass.async_create_task(self.async_snooze())
 
             try:
                 unsub = async_track_state_change_event(
@@ -1680,6 +1723,7 @@ class SmartWakeAlarm:
         self._status = STATUS_PRE_ALARM
         self._active_phase = PHASE_PRE_ALARM
         self._notify_update()
+        self._setup_active_alarm_listeners()
 
         async def _run_loop() -> None:
             try:
@@ -1724,6 +1768,7 @@ class SmartWakeAlarm:
         """Stop running dry run test and restore idle state."""
         _LOGGER.info("Stopping dry-run test for Smart Wake [%s]", self._name)
         self._cancel_dry_run()
+        self._cleanup_listeners()
         self._is_dry_run = False
         self._dry_run_progress = 0
         self._cancel_fade_tasks()

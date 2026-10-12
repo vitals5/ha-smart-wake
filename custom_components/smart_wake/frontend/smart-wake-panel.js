@@ -476,6 +476,13 @@ const PANEL_STYLES = `
           transform: translateY(0);
         }
 
+        .sw-toast.snoozing {
+          border: 1px solid #fb8c00;
+          border-left: 4px solid #fb8c00;
+          background: rgba(30, 41, 59, 0.96);
+          box-shadow: 0 10px 25px -5px rgba(251, 140, 0, 0.35);
+        }
+
         button.btn-full-test {
           background: rgba(229, 57, 53, 0.18) !important;
           color: #ff8a80 !important;
@@ -1122,7 +1129,7 @@ class SmartWakePanel extends HTMLElement {
     if (this._timer) clearInterval(this._timer);
     this._timer = setInterval(() => {
       this._updateLiveElements();
-    }, 5000);
+    }, 1000);
   }
 
   disconnectedCallback() {
@@ -1180,6 +1187,48 @@ class SmartWakePanel extends HTMLElement {
         if (phaseEl) phaseEl.textContent = (alarm.active_phase || "").toUpperCase();
       }
     });
+    this._updateSnoozeToast();
+  }
+
+  _updateSnoozeToast() {
+    if (!this.shadowRoot) return;
+    const toast = this.shadowRoot.getElementById("smartWakeToast");
+    if (!toast) return;
+
+    const snoozedAlarm = (this._alarms || []).find((a) => a.status === "snoozed");
+
+    if (snoozedAlarm) {
+      this._isSnoozeActive = true;
+      const now = new Date();
+      let remaining = "";
+      if (snoozedAlarm.snooze_until) {
+        const snoozeDate = new Date(snoozedAlarm.snooze_until);
+        const diffSecs = Math.max(0, Math.floor((snoozeDate - now) / 1000));
+        const mins = Math.floor(diffSecs / 60);
+        const secs = diffSecs % 60;
+        remaining = mins > 0 ? `noch ${mins}m ${secs}s` : `noch ${secs}s`;
+      } else if (snoozedAlarm.countdown_text) {
+        remaining = snoozedAlarm.countdown_text;
+      } else {
+        remaining = "aktiv";
+      }
+
+      const isTest = Boolean(snoozedAlarm.is_testing || snoozedAlarm.is_full_test || snoozedAlarm.is_dry_run);
+      const testTag = isTest ? " [Testlauf]" : "";
+      const text = `💤 Schlummermodus läuft${testTag} (${remaining}) – Wecker pausiert`;
+
+      if (!this._customToastUntil || Date.now() > this._customToastUntil) {
+        toast.textContent = text;
+        toast.classList.add("visible");
+        toast.classList.add("snoozing");
+      }
+    } else if (this._isSnoozeActive) {
+      this._isSnoozeActive = false;
+      toast.classList.remove("snoozing");
+      if (!this._customToastUntil || Date.now() > this._customToastUntil) {
+        this._showToast("🔔 Schlummern beendet – Wecker wird fortgesetzt!", 3500);
+      }
+    }
   }
 
   _updateCountdowns() {
@@ -1253,11 +1302,19 @@ class SmartWakePanel extends HTMLElement {
     if (!this.shadowRoot) return;
     let toast = this.shadowRoot.getElementById("smartWakeToast");
     if (!toast) return;
+    this._customToastUntil = Date.now() + duration;
     toast.textContent = msg;
     toast.classList.add("visible");
+    toast.classList.remove("snoozing");
     if (this._toastTimeout) clearTimeout(this._toastTimeout);
     this._toastTimeout = setTimeout(() => {
-      toast.classList.remove("visible");
+      this._customToastUntil = 0;
+      const snoozedAlarm = (this._alarms || []).find((a) => a.status === "snoozed");
+      if (snoozedAlarm) {
+        this._updateSnoozeToast();
+      } else {
+        toast.classList.remove("visible");
+      }
     }, duration);
   }
   async _snoozeAlarm(alarmId) {
@@ -2409,6 +2466,8 @@ class SmartWakePanel extends HTMLElement {
         btnDismiss.onclick = () => this._dismissAlarm(alarm.id);
       }
     });
+
+    this._updateLiveElements();
   }
 
   _renderModals() {
