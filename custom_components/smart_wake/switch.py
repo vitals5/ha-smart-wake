@@ -21,7 +21,7 @@ except Exception:
         return lambda: None
     DeviceInfo = dict
 
-from .const import DOMAIN, SIGNAL_SMART_WAKE_UPDATED
+from .const import DOMAIN, SIGNAL_SMART_WAKE_UPDATED, VERSION
 from .coordinator import SmartWakeAlarm
 
 _LOGGER = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ class SmartWakeSwitchEntity(SwitchEntity):
             name=alarm.name,
             manufacturer="Smart Wake",
             model="Smart Alarm Clock",
-            sw_version="1.0.0",
+            sw_version=VERSION,
         )
 
     @property

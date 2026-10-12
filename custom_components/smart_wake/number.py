@@ -33,6 +33,7 @@ from .const import (
     DEFAULT_SNOOZE_DURATION,
     DOMAIN,
     SIGNAL_SMART_WAKE_UPDATED,
+    VERSION,
 )
 from .coordinator import SmartWakeAlarm
 
@@ -68,7 +69,7 @@ class SmartWakeBaseNumber(NumberEntity):
             name=alarm.name,
             manufacturer="Smart Wake",
             model="Smart Alarm Clock",
-            sw_version="1.0.0",
+            sw_version=VERSION,
         )
 
     async def async_added_to_hass(self) -> None:

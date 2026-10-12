@@ -16,7 +16,7 @@ except Exception:
     HomeAssistant = Any
     DeviceInfo = dict
 
-from .const import DOMAIN
+from .const import DOMAIN, VERSION
 from .coordinator import SmartWakeAlarm
 
 _LOGGER = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ class SmartWakeBaseButton(ButtonEntity):
             name=alarm.name,
             manufacturer="Smart Wake",
             model="Smart Alarm Clock",
-            sw_version="1.0.0",
+            sw_version=VERSION,
         )
 
 

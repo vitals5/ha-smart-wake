@@ -36,6 +36,7 @@ from .const import (
     STATUS_RINGING,
     STATUS_SKIPPED,
     STATUS_SNOOZED,
+    VERSION,
 )
 from .coordinator import SmartWakeAlarm
 
@@ -73,7 +74,7 @@ class SmartWakeBaseSensor(SensorEntity):
             name=alarm.name,
             manufacturer="Smart Wake",
             model="Smart Alarm Clock",
-            sw_version="1.0.0",
+            sw_version=VERSION,
         )
 
     async def async_added_to_hass(self) -> None:
