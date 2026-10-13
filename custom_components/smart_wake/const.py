@@ -5,7 +5,7 @@ import os
 
 DOMAIN = "smart_wake"
 NAME = "Smart Wake"
-VERSION = "1.0.11"
+VERSION = "1.0.12"
 
 # Static assets and frontend paths
 URL_BASE = "/smart_wake_frontend"
@@ -111,6 +111,7 @@ CONF_MAIN_AUDIO_FADE_IN = "main_audio_fade_in"
 CONF_MAIN_AUDIO_FADE_DURATION = "main_audio_fade_duration"  # seconds
 CONF_MAIN_AUDIO_TARGET_VOLUME = "main_audio_target_volume"  # 0.0 - 1.0
 CONF_MAIN_TTS_ENABLED = "main_tts_enabled"
+CONF_MAIN_TTS_MEDIA_PLAYER = "main_tts_media_player"
 CONF_MAIN_TTS_MESSAGE = "main_tts_message"
 CONF_MAIN_TTS_ENGINE = "main_tts_engine"
 CONF_MAIN_TTS_DELAY = "main_tts_delay"  # seconds after main alarm start
@@ -165,6 +166,7 @@ DEFAULT_MAIN_AUDIO_FADE_DURATION = 30
 DEFAULT_MAIN_AUDIO_TARGET_VOLUME = 0.5
 DEFAULT_MAIN_AUDIO_CONTENT_TYPE = "music"
 DEFAULT_MAIN_TTS_ENABLED = False
+DEFAULT_MAIN_TTS_MEDIA_PLAYER = ""
 DEFAULT_MAIN_TTS_MESSAGE = "Guten Morgen! Es ist {time} Uhr."
 DEFAULT_MAIN_TTS_DELAY = 15
 

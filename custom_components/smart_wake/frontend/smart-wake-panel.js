@@ -364,15 +364,39 @@ const PANEL_STYLES = `
           display: flex;
           justify-content: space-between;
           align-items: center;
+          flex-wrap: wrap;
           margin-top: 4px;
           padding-top: 12px;
           border-top: 1px solid rgba(255, 255, 255, 0.08);
-          gap: 8px;
+          gap: 10px;
         }
 
         .btn-group {
           display: flex;
+          flex-wrap: wrap;
           gap: 8px;
+        }
+
+        @media (max-width: 600px) {
+          .actions-bar {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 10px;
+          }
+
+          .btn-group {
+            width: 100%;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+          }
+
+          button.btn-action {
+            flex: 1 1 auto;
+            min-height: 42px;
+            justify-content: center;
+            text-align: center;
+          }
         }
 
         button.btn-action {
@@ -1107,6 +1131,11 @@ class SmartWakePanel extends HTMLElement {
       this._fetchAlarms();
       this._subscribeUpdates();
     }
+    if (!this._timer) {
+      this._timer = setInterval(() => {
+        this._updateLiveElements();
+      }, 1000);
+    }
     if (this._editingAlarmId) {
       this._scheduleChipRefresh();
     }
@@ -1199,35 +1228,39 @@ class SmartWakePanel extends HTMLElement {
 
   _updateLiveElements() {
     if (!this.shadowRoot) return;
-    this._updateCountdowns();
-    this._alarms.forEach((alarm) => {
-      // Dynamic time updates
-      const timeEl = this.shadowRoot.getElementById(`time-${alarm.id}`);
-      if (timeEl) {
-        const text = `${alarm.time} Uhr`;
-        if (timeEl.textContent !== text) timeEl.textContent = text;
-      }
-      const tlP2 = this.shadowRoot.getElementById(`timeline-p2-${alarm.id}`);
-      if (tlP2 && tlP2.textContent !== alarm.time) {
-        tlP2.textContent = alarm.time;
-      }
-      const tlP1 = this.shadowRoot.getElementById(`timeline-p1-${alarm.id}`);
-      if (tlP1) {
-        const p1Time = this._formatTime(alarm.pre_alarm_time);
-        if (tlP1.textContent !== p1Time) tlP1.textContent = p1Time;
-      }
+    try {
+      this._updateCountdowns();
+      this._alarms.forEach((alarm) => {
+        // Dynamic time updates
+        const timeEl = this.shadowRoot.getElementById(`time-${alarm.id}`);
+        if (timeEl) {
+          const text = `${alarm.time} Uhr`;
+          if (timeEl.textContent !== text) timeEl.textContent = text;
+        }
+        const tlP2 = this.shadowRoot.getElementById(`timeline-p2-${alarm.id}`);
+        if (tlP2 && tlP2.textContent !== alarm.time) {
+          tlP2.textContent = alarm.time;
+        }
+        const tlP1 = this.shadowRoot.getElementById(`timeline-p1-${alarm.id}`);
+        if (tlP1) {
+          const p1Time = this._formatTime(alarm.pre_alarm_time);
+          if (tlP1.textContent !== p1Time) tlP1.textContent = p1Time;
+        }
 
-      if (alarm.is_dry_run) {
-        const textEl = this.shadowRoot.getElementById(`dryrun-text-${alarm.id}`);
-        const barEl = this.shadowRoot.getElementById(`dryrun-bar-${alarm.id}`);
-        const phaseEl = this.shadowRoot.getElementById(`dryrun-phase-${alarm.id}`);
-        const pct = Math.min(100, (((alarm.dry_run_progress ?? 0) / 30) * 100));
-        if (textEl) textEl.textContent = `⏱️ Testlauf Zeitraffer: ${alarm.dry_run_progress ?? 0}s / 30s`;
-        if (barEl) barEl.style.width = `${pct}%`;
-        if (phaseEl) phaseEl.textContent = (alarm.active_phase || "").toUpperCase();
-      }
-    });
-    this._updateSnoozeToast();
+        if (alarm.is_dry_run) {
+          const textEl = this.shadowRoot.getElementById(`dryrun-text-${alarm.id}`);
+          const barEl = this.shadowRoot.getElementById(`dryrun-bar-${alarm.id}`);
+          const phaseEl = this.shadowRoot.getElementById(`dryrun-phase-${alarm.id}`);
+          const pct = Math.min(100, (((alarm.dry_run_progress ?? 0) / 30) * 100));
+          if (textEl) textEl.textContent = `⏱️ Testlauf Zeitraffer: ${alarm.dry_run_progress ?? 0}s / 30s`;
+          if (barEl) barEl.style.width = `${pct}%`;
+          if (phaseEl) phaseEl.textContent = (alarm.active_phase || "").toUpperCase();
+        }
+      });
+      this._updateSnoozeToast();
+    } catch (err) {
+      console.debug("Live elements update error:", err);
+    }
   }
 
   _updateSnoozeToast() {
@@ -1257,17 +1290,14 @@ class SmartWakePanel extends HTMLElement {
       const testTag = isTest ? " [Testlauf]" : "";
       const text = `💤 Schlummermodus läuft${testTag} (${remaining}) – Wecker pausiert`;
 
-      if (!this._customToastUntil || Date.now() > this._customToastUntil) {
-        toast.textContent = text;
-        toast.classList.add("visible");
-        toast.classList.add("snoozing");
-      }
+      // Always update toast text and keep it visible while snoozed!
+      toast.textContent = text;
+      toast.classList.add("visible");
+      toast.classList.add("snoozing");
     } else if (this._isSnoozeActive) {
       this._isSnoozeActive = false;
       toast.classList.remove("snoozing");
-      if (!this._customToastUntil || Date.now() > this._customToastUntil) {
-        this._showToast("🔔 Schlummern beendet – Wecker wird fortgesetzt!", 3500);
-      }
+      this._showToast("🔔 Schlummern beendet – Wecker wird fortgesetzt!", 3500);
     }
   }
 
@@ -1276,9 +1306,10 @@ class SmartWakePanel extends HTMLElement {
     const now = new Date();
     this._alarms.forEach((alarm) => {
       const chip = this.shadowRoot.getElementById(`countdown-${alarm.id}`);
-      if (!chip) return;
+      const snoozeBanner = this.shadowRoot.getElementById(`snooze-banner-text-${alarm.id}`);
 
       let text = "Deaktiviert";
+      let snoozeBannerRemaining = "";
       if (!alarm.enabled) {
         text = "Deaktiviert";
       } else if (alarm.status === "snoozed" && alarm.snooze_until) {
@@ -1287,6 +1318,7 @@ class SmartWakePanel extends HTMLElement {
         const mins = Math.floor(diffSecs / 60);
         const secs = diffSecs % 60;
         text = mins > 0 ? `Schlummert (noch ${mins}m ${secs}s)` : `Schlummert (noch ${secs}s)`;
+        snoozeBannerRemaining = mins > 0 ? `noch ${mins}m ${secs}s` : `noch ${secs}s`;
       } else if (alarm.next_alarm) {
         const nextDate = new Date(alarm.next_alarm);
         const diffSecs = Math.max(0, Math.floor((nextDate - now) / 1000));
@@ -1295,9 +1327,18 @@ class SmartWakePanel extends HTMLElement {
         text = alarm.countdown_text;
       }
 
-      const formatted = `⏳ ${text}`;
-      if (chip.textContent.trim() !== formatted) {
-        chip.textContent = formatted;
+      if (chip) {
+        const formatted = `⏳ ${text}`;
+        if (chip.textContent.trim() !== formatted) {
+          chip.textContent = formatted;
+        }
+      }
+
+      if (snoozeBanner && snoozeBannerRemaining) {
+        const bannerFormatted = `💤 Schlummermodus aktiv (${snoozeBannerRemaining})`;
+        if (snoozeBanner.textContent.trim() !== bannerFormatted) {
+          snoozeBanner.textContent = bannerFormatted;
+        }
       }
     });
   }
@@ -1569,6 +1610,7 @@ class SmartWakePanel extends HTMLElement {
         main_media_player_entities: Array.isArray(rawCfg.main_media_player_entities)
           ? rawCfg.main_media_player_entities.join(", ")
           : (sumCfg.main_media_players ? sumCfg.main_media_players.join(", ") : ""),
+        main_tts_media_player: rawCfg.main_tts_media_player ?? sumCfg.main_tts_media_player ?? "",
         main_audio_content_id: rawCfg.main_audio_content_id ?? sumCfg.main_audio_content ?? "",
         main_audio_content_type: rawCfg.main_audio_content_type ?? "music",
         main_audio_fade_in: Boolean(rawCfg.main_audio_fade_in ?? true),
@@ -1599,8 +1641,10 @@ class SmartWakePanel extends HTMLElement {
         // Snooze & Anti-Cheat
         snooze_duration: rawCfg.snooze_duration ?? alarm?.snooze_duration ?? 8,
         max_snooze_count: rawCfg.max_snooze_count ?? alarm?.max_snooze_count ?? 2,
-        snooze_button_entity: rawCfg.snooze_button_entity ?? "",
+        snooze_button_entity: rawCfg.snooze_button_entity ?? sumCfg.snooze_button ?? "",
+        snooze_button_event: rawCfg.snooze_button_event ?? sumCfg.snooze_button_event ?? "",
         dismiss_button_entity: rawCfg.dismiss_button_entity ?? sumCfg.dismiss_button ?? "",
+        dismiss_button_event: rawCfg.dismiss_button_event ?? sumCfg.dismiss_button_event ?? "",
         dismiss_motion_entities: Array.isArray(rawCfg.dismiss_motion_entities)
           ? rawCfg.dismiss_motion_entities.join(", ")
           : (sumCfg.dismiss_motion ? sumCfg.dismiss_motion.join(", ") : ""),
@@ -1642,6 +1686,7 @@ class SmartWakePanel extends HTMLElement {
         pre_alarm_script_entity: "",
 
         main_media_player_entities: "",
+        main_tts_media_player: "",
         main_audio_content_id: "",
         main_audio_content_type: "music",
         main_audio_fade_in: true,
@@ -1667,7 +1712,9 @@ class SmartWakePanel extends HTMLElement {
         snooze_duration: 8,
         max_snooze_count: 2,
         snooze_button_entity: "",
+        snooze_button_event: "",
         dismiss_button_entity: "",
+        dismiss_button_event: "",
         dismiss_motion_entities: "",
         dismiss_nfc_tags: "",
         dismiss_power_sensor: "",
@@ -1776,6 +1823,7 @@ class SmartWakePanel extends HTMLElement {
 
     // Phase 2 Tab
     if (getVal("f_main_media_player_entities") !== undefined) this._editConfig.main_media_player_entities = getVal("f_main_media_player_entities");
+    if (getVal("f_main_tts_media_player") !== undefined) this._editConfig.main_tts_media_player = getVal("f_main_tts_media_player");
     if (getVal("f_main_audio_content_id") !== undefined) this._editConfig.main_audio_content_id = getVal("f_main_audio_content_id");
     if (getVal("f_main_audio_content_type") !== undefined) this._editConfig.main_audio_content_type = getVal("f_main_audio_content_type");
     if (getChecked("f_main_audio_fade_in") !== undefined) this._editConfig.main_audio_fade_in = getChecked("f_main_audio_fade_in");
@@ -1802,7 +1850,9 @@ class SmartWakePanel extends HTMLElement {
     if (getVal("f_snooze_duration") !== undefined) this._editConfig.snooze_duration = getVal("f_snooze_duration");
     if (getVal("f_max_snooze_count") !== undefined) this._editConfig.max_snooze_count = getVal("f_max_snooze_count");
     if (getVal("f_snooze_button_entity") !== undefined) this._editConfig.snooze_button_entity = getVal("f_snooze_button_entity");
+    if (getVal("f_snooze_button_event") !== undefined) this._editConfig.snooze_button_event = getVal("f_snooze_button_event");
     if (getVal("f_dismiss_button_entity") !== undefined) this._editConfig.dismiss_button_entity = getVal("f_dismiss_button_entity");
+    if (getVal("f_dismiss_button_event") !== undefined) this._editConfig.dismiss_button_event = getVal("f_dismiss_button_event");
     if (getVal("f_dismiss_motion_entities") !== undefined) this._editConfig.dismiss_motion_entities = getVal("f_dismiss_motion_entities");
     if (getVal("f_dismiss_nfc_tags") !== undefined) this._editConfig.dismiss_nfc_tags = getVal("f_dismiss_nfc_tags");
     if (getVal("f_dismiss_power_sensor") !== undefined) this._editConfig.dismiss_power_sensor = getVal("f_dismiss_power_sensor");
@@ -1858,6 +1908,7 @@ class SmartWakePanel extends HTMLElement {
         pre_alarm_script_entity: this._editConfig.pre_alarm_script_entity || null,
 
         main_media_player_entities: toList(this._editConfig.main_media_player_entities),
+        main_tts_media_player: this._editConfig.main_tts_media_player || null,
         main_audio_content_id: this._editConfig.main_audio_content_id || null,
         main_audio_content_type: this._editConfig.main_audio_content_type || "music",
         main_audio_fade_in: Boolean(this._editConfig.main_audio_fade_in),
@@ -1883,7 +1934,9 @@ class SmartWakePanel extends HTMLElement {
         snooze_duration: parseInt(this._editConfig.snooze_duration, 10) || 8,
         max_snooze_count: parseInt(this._editConfig.max_snooze_count, 10) || 2,
         snooze_button_entity: this._editConfig.snooze_button_entity || null,
+        snooze_button_event: this._editConfig.snooze_button_event || "",
         dismiss_button_entity: this._editConfig.dismiss_button_entity || null,
+        dismiss_button_event: this._editConfig.dismiss_button_event || "",
         dismiss_motion_entities: toList(this._editConfig.dismiss_motion_entities),
         dismiss_nfc_tags: toList(this._editConfig.dismiss_nfc_tags),
         dismiss_power_sensor: this._editConfig.dismiss_power_sensor || null,
@@ -2782,7 +2835,7 @@ class SmartWakePanel extends HTMLElement {
             ? `
             <div class="snooze-anti-cheat-banner">
               <div style="font-weight: 600; font-size: 13px; color: #ffb74d; display: flex; align-items: center; justify-content: space-between;">
-                <span>💤 Schlummermodus aktiv (${alarm.countdown_text})</span>
+                <span id="snooze-banner-text-${alarm.id}">💤 Schlummermodus aktiv (${alarm.countdown_text})</span>
                 <span class="badge" style="background: #fb8c00; font-size: 10px; padding: 2px 7px;">SNOOZE ${alarm.snooze_count}/${alarm.max_snooze_count}</span>
               </div>
               <div style="font-size: 12px; margin-top: 5px; color: #ffe0b2;">
@@ -3087,6 +3140,8 @@ class SmartWakePanel extends HTMLElement {
           <div class="form-section-title">Media Player & Audio</div>
           ${this._renderEntityField("f_main_media_player_entities", "Media Player Entities (Kommagetrennt)", cfg.main_media_player_entities, "media_player.schlafzimmer_speaker", "Lautsprecher, auf denen der Wecker ertönen soll", "media_player", true)}
 
+          ${this._renderEntityField("f_main_tts_media_player", "Eigener TTS Media Player (Optional)", cfg.main_tts_media_player, "media_player.google_nest_mini", "Separater Lautsprecher nur für Sprachausgabe. Musik-Player wird während der Ansage pausiert.", "media_player", false)}
+
           <div class="form-row">
             <div class="form-group">
               <label class="form-label" for="f_main_audio_content_id">Audio Content ID / Radio URL</label>
@@ -3224,8 +3279,20 @@ class SmartWakePanel extends HTMLElement {
 
           <div class="form-section-title">Hardware-Taster (Zigbee / Z-Wave)</div>
           <div class="form-row">
-            ${this._renderEntityField("f_snooze_button_entity", "Snooze-Taster Entity (1x Klick)", cfg.snooze_button_entity, "event.nachttisch_taster", "Hardware-Taster für Schlummern (Event, Button oder Sensor)", "event,button,sensor,binary_sensor", false)}
-            ${this._renderEntityField("f_dismiss_button_entity", "Dismiss-Taster Entity (2x Klick)", cfg.dismiss_button_entity, "event.nachttisch_taster_double", "Hardware-Taster für Quittieren (Event, Button oder Sensor)", "event,button,sensor,binary_sensor", false)}
+            ${this._renderEntityField("f_snooze_button_entity", "Snooze-Taster Entity", cfg.snooze_button_entity, "event.nachttisch_taster", "Hardware-Taster für Schlummern (Event, Button oder Sensor)", "event,button,sensor,binary_sensor", false)}
+            <div class="form-group">
+              <label class="form-label" for="f_snooze_button_event">Snooze Event-Typ / Aktion</label>
+              <input class="form-input" id="f_snooze_button_event" type="text" value="${cfg.snooze_button_event || ""}" placeholder="z. B. press, single, click" />
+              <span class="form-hint">Optional: Spezifischer Event-Typ oder Action-String (leer lassen für Standard)</span>
+            </div>
+          </div>
+          <div class="form-row">
+            ${this._renderEntityField("f_dismiss_button_entity", "Dismiss-Taster Entity", cfg.dismiss_button_entity, "event.nachttisch_taster_double", "Hardware-Taster für Quittieren (Event, Button oder Sensor)", "event,button,sensor,binary_sensor", false)}
+            <div class="form-group">
+              <label class="form-label" for="f_dismiss_button_event">Dismiss Event-Typ / Aktion</label>
+              <input class="form-input" id="f_dismiss_button_event" type="text" value="${cfg.dismiss_button_event || ""}" placeholder="z. B. double, double_press, hold" />
+              <span class="form-hint">Optional: Spezifischer Event-Typ oder Action-String (leer lassen für Standard)</span>
+            </div>
           </div>
 
           <div class="form-section-title">Anti-Cheat Aufsteh-Beweis</div>

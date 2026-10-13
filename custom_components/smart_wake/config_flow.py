@@ -105,6 +105,7 @@ from .const import (
     CONF_CALENDAR_ENTITY,
     CONF_DAYS,
     CONF_DISMISS_BUTTON_ENTITY,
+    CONF_DISMISS_BUTTON_EVENT,
     CONF_DISMISS_INPUT_BOOLEAN,
     CONF_DISMISS_MOTION_ENTITIES,
     CONF_DISMISS_NFC_TAGS,
@@ -131,6 +132,7 @@ from .const import (
     CONF_MAIN_TTS_DELAY,
     CONF_MAIN_TTS_ENGINE,
     CONF_MAIN_TTS_ENABLED,
+    CONF_MAIN_TTS_MEDIA_PLAYER,
     CONF_MAIN_TTS_MESSAGE,
     CONF_MAX_SNOOZE_COUNT,
     CONF_NAME,
@@ -148,6 +150,7 @@ from .const import (
     CONF_SLEEP_STAGE_VALUES,
     CONF_SLEEP_STAGE_WINDOW,
     CONF_SNOOZE_BUTTON_ENTITY,
+    CONF_SNOOZE_BUTTON_EVENT,
     CONF_SNOOZE_DURATION,
     CONF_TIME,
     CONF_WEATHER_RAIN_ENTITY,
@@ -566,6 +569,12 @@ class SmartWakeOptionsFlowHandler(config_entries.OptionsFlow):
                         CONF_MAIN_TTS_ENABLED, DEFAULT_MAIN_TTS_ENABLED
                     ),
                 ): bool,
+                vol.Optional(
+                    CONF_MAIN_TTS_MEDIA_PLAYER,
+                    description={"suggested_value": self._options.get(CONF_MAIN_TTS_MEDIA_PLAYER)},
+                ): EntitySelector(
+                    EntitySelectorConfig(domain="media_player")
+                ) if EntitySelector else str,
                 vol.Required(
                     CONF_MAIN_TTS_DELAY,
                     default=int(
@@ -700,17 +709,25 @@ class SmartWakeOptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                 ): vol.All(vol.Coerce(int), vol.Range(min=0, max=10)),
                 vol.Optional(
+                    CONF_SNOOZE_BUTTON_ENTITY,
+                    description={"suggested_value": self._options.get(CONF_SNOOZE_BUTTON_ENTITY)},
+                ): EntitySelector(
+                    EntitySelectorConfig(domain=["event", "sensor", "binary_sensor"])
+                ) if EntitySelector else str,
+                vol.Optional(
+                    CONF_SNOOZE_BUTTON_EVENT,
+                    description={"suggested_value": self._options.get(CONF_SNOOZE_BUTTON_EVENT, "")},
+                ): str,
+                vol.Optional(
                     CONF_DISMISS_BUTTON_ENTITY,
                     description={"suggested_value": self._options.get(CONF_DISMISS_BUTTON_ENTITY)},
                 ): EntitySelector(
                     EntitySelectorConfig(domain=["event", "sensor", "binary_sensor"])
                 ) if EntitySelector else str,
                 vol.Optional(
-                    CONF_SNOOZE_BUTTON_ENTITY,
-                    description={"suggested_value": self._options.get(CONF_SNOOZE_BUTTON_ENTITY)},
-                ): EntitySelector(
-                    EntitySelectorConfig(domain=["event", "sensor", "binary_sensor"])
-                ) if EntitySelector else str,
+                    CONF_DISMISS_BUTTON_EVENT,
+                    description={"suggested_value": self._options.get(CONF_DISMISS_BUTTON_EVENT, "")},
+                ): str,
                 vol.Optional(
                     CONF_DISMISS_MOTION_ENTITIES,
                     description={"suggested_value": self._options.get(CONF_DISMISS_MOTION_ENTITIES, [])},

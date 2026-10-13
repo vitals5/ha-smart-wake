@@ -111,6 +111,7 @@ from .const import (
     CONF_MAIN_SCRIPT_ENTITY,
     CONF_MAIN_TTS_ENGINE,
     CONF_MAIN_TTS_ENABLED,
+    CONF_MAIN_TTS_MEDIA_PLAYER,
     CONF_MAIN_TTS_MESSAGE,
     CONF_MAIN_TTS_DELAY,
     CONF_MAX_SNOOZE_COUNT,
@@ -1128,6 +1129,17 @@ class SmartWakeAlarm:
         btn_snooze = self._config.get(CONF_SNOOZE_BUTTON_ENTITY)
         tracked_btns = [b for b in (btn_dismiss, btn_snooze) if b]
 
+        cfg_snooze_events = [
+            e.strip().lower()
+            for e in str(self._config.get(CONF_SNOOZE_BUTTON_EVENT, "")).split(",")
+            if e.strip()
+        ]
+        cfg_dismiss_events = [
+            e.strip().lower()
+            for e in str(self._config.get(CONF_DISMISS_BUTTON_EVENT, "")).split(",")
+            if e.strip()
+        ]
+
         if tracked_btns:
             @callback
             def _on_btn_event(event: Event) -> None:
@@ -1148,54 +1160,82 @@ class SmartWakeAlarm:
                 )
 
                 attrs = getattr(new_state, "attributes", {}) or {}
-                action_candidates = [
-                    str(attrs.get("event_type", "")),
-                    str(attrs.get("action", "")),
-                    str(attrs.get("click", "")),
-                    str(attrs.get("command", "")),
-                    str(attrs.get("event", "")),
-                    str(attrs.get("press_type", "")),
-                    str(attrs.get("subtype", "")),
-                ]
+                raw_tokens: list[str] = []
                 if not is_timestamp:
-                    action_candidates.append(val)
+                    raw_tokens.append(val)
 
-                action_text = " ".join([c for c in action_candidates if c]).lower().strip()
-                words = [w for w in action_text.replace("_", " ").replace("-", " ").split() if w]
+                for k in ("event_type", "action", "click", "command", "event", "press_type", "subtype"):
+                    v = str(attrs.get(k, "")).strip().lower()
+                    if v and v not in ("none", "null", "unknown", "unavailable"):
+                        raw_tokens.append(v)
 
-                # Double click / multi / hold check (keywords or standalone number 2)
-                is_double = (
-                    any(kw in action_text for kw in ("double", "triple", "multi", "hold", "long", "2_single", "2_click"))
-                    or "2" in words
-                )
+                action_text = " ".join(raw_tokens).lower().strip()
 
-                # Single click check (keywords, standalone number 1, or default when no special action payload exists)
-                is_single = (
-                    any(kw in action_text for kw in ("single", "click", "press", "short", "toggle", "on", "1_single", "1_click"))
-                    or "1" in words
-                    or not action_text
-                )
-
-                # 1. Double click / Hold -> Dismiss
-                if is_double:
-                    _LOGGER.info("Smart Wake [%s] Double-click / Hold detected on %s -> Dismiss", self._name, ent_id)
+                # 1. Custom configured event types have highest priority
+                if cfg_dismiss_events and any(any(de == tok or de in tok for de in cfg_dismiss_events) for tok in raw_tokens):
+                    _LOGGER.info(
+                        "Smart Wake [%s] Configured dismiss event detected on %s (%s) -> Dismiss",
+                        self._name,
+                        ent_id,
+                        action_text,
+                    )
                     self.hass.async_create_task(self.async_dismiss(forced=False))
                     return
 
-                # 2. Not a double-click: this is a Single Click / Press -> Snooze
-                # Check if dedicated distinct buttons are configured for snooze and dismiss
+                if cfg_snooze_events and any(any(se == tok or se in tok for se in cfg_snooze_events) for tok in raw_tokens):
+                    _LOGGER.info(
+                        "Smart Wake [%s] Configured snooze event detected on %s (%s) -> Snooze",
+                        self._name,
+                        ent_id,
+                        action_text,
+                    )
+                    self.hass.async_create_task(self.async_snooze())
+                    return
+
+                # 2. Check dedicated distinct buttons
                 if btn_snooze and btn_dismiss and btn_snooze != btn_dismiss:
                     if ent_id == btn_dismiss:
-                        _LOGGER.info("Smart Wake [%s] Dedicated Dismiss button triggered on %s -> Dismiss", self._name, ent_id)
+                        _LOGGER.info(
+                            "Smart Wake [%s] Dedicated Dismiss button triggered on %s -> Dismiss",
+                            self._name,
+                            ent_id,
+                        )
                         self.hass.async_create_task(self.async_dismiss(forced=False))
                     else:
-                        _LOGGER.info("Smart Wake [%s] Dedicated Snooze button triggered on %s -> Snooze", self._name, ent_id)
+                        _LOGGER.info(
+                            "Smart Wake [%s] Dedicated Snooze button triggered on %s -> Snooze",
+                            self._name,
+                            ent_id,
+                        )
                         self.hass.async_create_task(self.async_snooze())
-                else:
-                    # Shared button (or single button configured in either field):
-                    # 1x click ALWAYS snoozes!
-                    _LOGGER.info("Smart Wake [%s] Single click on button %s -> Snooze", self._name, ent_id)
-                    self.hass.async_create_task(self.async_snooze())
+                    return
+
+                # 3. Default keyword matching (Shared button or single button configured in either field)
+                # Check for explicit double-click / multi-click / hold keywords
+                # Note: Do NOT match bare '2' because multi-button remotes report 'button_2_press' or '2_single' on button 2!
+                is_explicit_dismiss = any(
+                    kw in action_text
+                    for kw in ("double", "triple", "multi", "hold", "long", "2_click", "double_press", "long_press")
+                )
+
+                if is_explicit_dismiss:
+                    _LOGGER.info(
+                        "Smart Wake [%s] Double-click / Hold detected on %s (%s) -> Dismiss",
+                        self._name,
+                        ent_id,
+                        action_text,
+                    )
+                    self.hass.async_create_task(self.async_dismiss(forced=False))
+                    return
+
+                # Default for single press / any regular button action on shared button: Snooze!
+                _LOGGER.info(
+                    "Smart Wake [%s] Single click / press on button %s (%s) -> Snooze",
+                    self._name,
+                    ent_id,
+                    action_text,
+                )
+                self.hass.async_create_task(self.async_snooze())
 
             try:
                 unsub = async_track_state_change_event(
@@ -1408,7 +1448,8 @@ class SmartWakeAlarm:
 
         # TTS Greeting (zeitverzögert, pausiert Medienwiedergabe vorher, spricht, setzt danach fort)
         tts_enabled = self._config.get(CONF_MAIN_TTS_ENABLED, DEFAULT_MAIN_TTS_ENABLED)
-        if tts_enabled and media_players:
+        tts_player = self._config.get(CONF_MAIN_TTS_MEDIA_PLAYER) or (media_players[0] if media_players else None)
+        if tts_enabled and tts_player:
             tts_delay = int(self._config.get(CONF_MAIN_TTS_DELAY, DEFAULT_MAIN_TTS_DELAY))
             if self._is_dry_run:
                 tts_delay = min(2, tts_delay)
@@ -1559,7 +1600,7 @@ class SmartWakeAlarm:
     async def _run_tts_sequence(
         self, media_players: list[str], delay_seconds: int
     ) -> None:
-        """Wait configured delay, pause media playback, speak TTS greeting, and resume playback."""
+        """Wait configured delay, pause media playback, speak TTS greeting on dedicated TTS player, and resume playback."""
         try:
             if delay_seconds > 0:
                 await asyncio.sleep(delay_seconds)
@@ -1567,7 +1608,13 @@ class SmartWakeAlarm:
             if self._status != STATUS_RINGING and not self._is_dry_run:
                 return
 
-            # 1. Pause media playback
+            dedicated_tts_player = self._config.get(CONF_MAIN_TTS_MEDIA_PLAYER)
+            tts_player = dedicated_tts_player or (media_players[0] if media_players else None)
+            if not tts_player:
+                _LOGGER.warning("Smart Wake [%s] No media player available for TTS", self._name)
+                return
+
+            # 1. Pause alarm media player(s) before speaking
             for mp_ent in media_players:
                 try:
                     await self.hass.services.async_call(
@@ -1585,8 +1632,8 @@ class SmartWakeAlarm:
             if self._status != STATUS_RINGING and not self._is_dry_run:
                 return
 
-            # 2. Speak greeting on primary media player
-            await self._speak_greeting(media_players[0])
+            # 2. Speak greeting on dedicated TTS player
+            await self._speak_greeting(tts_player)
 
             # 3. Wait for TTS output to finish speaking
             raw_msg = self._config.get(CONF_MAIN_TTS_MESSAGE, DEFAULT_MAIN_TTS_MESSAGE)
@@ -1597,7 +1644,7 @@ class SmartWakeAlarm:
             if self._status != STATUS_RINGING and not self._is_dry_run:
                 return
 
-            # 4. Resume media playback
+            # 4. Resume alarm media playback
             for mp_ent in media_players:
                 try:
                     await self.hass.services.async_call(
@@ -1634,6 +1681,14 @@ class SmartWakeAlarm:
         )
 
         tts_engine = self._config.get(CONF_MAIN_TTS_ENGINE) or ""
+        if not tts_engine and hasattr(self.hass, "states") and hasattr(self.hass.states, "async_entity_ids"):
+            try:
+                for ent_id in self.hass.states.async_entity_ids("tts"):
+                    tts_engine = ent_id
+                    break
+            except Exception:
+                pass
+
         spoken = False
 
         # 1. Modern HA: tts.speak service
@@ -1675,6 +1730,16 @@ class SmartWakeAlarm:
                 elif self.hass.services.has_service("tts", f"{sname}_say"):
                     legacy_service = ("tts", f"{sname}_say")
 
+            if not legacy_service and hasattr(self.hass.services, "async_services"):
+                try:
+                    tts_srvs = self.hass.services.async_services().get("tts", {})
+                    for s_key in tts_srvs:
+                        if s_key.endswith("_say"):
+                            legacy_service = ("tts", s_key)
+                            break
+                except Exception:
+                    pass
+
             if not legacy_service:
                 for candidate in ("google_translate_say", "cloud_say", "piper_say"):
                     if self.hass.services.has_service("tts", candidate):
@@ -1710,10 +1775,16 @@ class SmartWakeAlarm:
             )
 
     async def _stop_media_players(self) -> None:
-        """Stop all media players configured for this alarm."""
+        """Stop all media players configured for this alarm (alarm players and dedicated TTS player)."""
         media_players = self._config.get(CONF_MAIN_MEDIA_PLAYER_ENTITIES, [])
         if isinstance(media_players, str):
             media_players = [media_players]
+        else:
+            media_players = list(media_players)
+
+        tts_mp = self._config.get(CONF_MAIN_TTS_MEDIA_PLAYER)
+        if tts_mp and tts_mp not in media_players:
+            media_players.append(tts_mp)
 
         for mp_ent in media_players:
             try:

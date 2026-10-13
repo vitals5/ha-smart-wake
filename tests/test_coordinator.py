@@ -13,6 +13,7 @@ from custom_components.smart_wake.const import (
     CONF_CALENDAR_ENTITY,
     CONF_DAYS,
     CONF_DISMISS_BUTTON_ENTITY,
+    CONF_DISMISS_BUTTON_EVENT,
     CONF_DISMISS_INPUT_BOOLEAN,
     CONF_DISMISS_MOTION_ENTITIES,
     CONF_DISMISS_NFC_TAGS,
@@ -26,6 +27,7 @@ from custom_components.smart_wake.const import (
     CONF_MAIN_MEDIA_PLAYER_ENTITIES,
     CONF_MAIN_TTS_DELAY,
     CONF_MAIN_TTS_ENABLED,
+    CONF_MAIN_TTS_MEDIA_PLAYER,
     CONF_MAX_SNOOZE_COUNT,
     CONF_NAME,
     CONF_PERSON_ENTITIES,
@@ -38,6 +40,7 @@ from custom_components.smart_wake.const import (
     CONF_SLEEP_STAGE_ENTITY,
     CONF_SLEEP_STAGE_VALUES,
     CONF_SNOOZE_BUTTON_ENTITY,
+    CONF_SNOOZE_BUTTON_EVENT,
     CONF_SNOOZE_DURATION,
     CONF_TIME,
     CONF_WEATHER_RAIN_ENTITY,
@@ -582,6 +585,119 @@ class TestSmartWakeCoordinator(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(0.01)
         self.assertEqual(alarm.status, STATUS_SNOOZED)
         self.assertIsNone(alarm._unsub_dry_run)  # Dry run loop cancelled on snooze
+
+    async def test_dedicated_tts_media_player(self) -> None:
+        """Test dedicated TTS media player pauses music player, speaks on TTS player, and resumes music player."""
+        cfg = dict(self.config)
+        cfg[CONF_MAIN_MEDIA_PLAYER_ENTITIES] = ["media_player.music_box"]
+        cfg[CONF_MAIN_TTS_MEDIA_PLAYER] = "media_player.tts_speaker"
+        cfg[CONF_MAIN_TTS_ENABLED] = True
+        cfg[CONF_MAIN_TTS_DELAY] = 0
+
+        alarm = SmartWakeAlarm(self.hass, "test_tts_player", cfg)
+        alarm._status = STATUS_RINGING
+
+        # Mock tts engine discovery in hass.states
+        tts_state = MagicMock()
+        tts_state.entity_id = "tts.piper"
+        self.hass.states.async_entity_ids = MagicMock(return_value=["tts.piper"])
+        self.hass.services.has_service = MagicMock(return_value=True)
+
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            await alarm._run_tts_sequence(["media_player.music_box"], 0)
+
+        # 1. Verify music player was paused
+        self.hass.services.async_call.assert_any_call(
+            "media_player",
+            "media_pause",
+            {"entity_id": "media_player.music_box"},
+            blocking=False,
+        )
+
+        # 2. Verify TTS was spoken on dedicated TTS player
+        tts_call_found = False
+        for call in self.hass.services.async_call.call_args_list:
+            if call[0][0] == "tts" and call[0][2].get("media_player_entity_id") == "media_player.tts_speaker":
+                tts_call_found = True
+                break
+        self.assertTrue(tts_call_found, "TTS must be targeted at dedicated TTS player media_player.tts_speaker")
+
+        # 3. Verify music player was resumed
+        self.hass.services.async_call.assert_any_call(
+            "media_player",
+            "media_play",
+            {"entity_id": "media_player.music_box"},
+            blocking=False,
+        )
+
+    async def test_button_event_type_configuration_and_multi_button_remote(self) -> None:
+        """Test explicit button event configuration and multi-button remote buttons."""
+        from homeassistant.helpers.event import async_track_state_change_event
+        async_track_state_change_event.reset_mock()
+
+        cfg = dict(self.config)
+        cfg[CONF_SNOOZE_BUTTON_ENTITY] = "event.bedside_remote"
+        cfg[CONF_SNOOZE_BUTTON_EVENT] = "1_single"
+        cfg[CONF_DISMISS_BUTTON_ENTITY] = "event.bedside_remote"
+        cfg[CONF_DISMISS_BUTTON_EVENT] = "2_single"
+
+        alarm = SmartWakeAlarm(self.hass, "test_custom_btn_events", cfg)
+        alarm._status = STATUS_RINGING
+        alarm._setup_active_alarm_listeners()
+
+        track_call = None
+        for call in async_track_state_change_event.call_args_list:
+            if "event.bedside_remote" in call[0][1]:
+                track_call = call[0][2]
+                break
+        self.assertIsNotNone(track_call)
+
+        # 1. Configured snooze event "1_single" triggers Snooze
+        event_snooze = MagicMock()
+        event_snooze.data = {
+            "entity_id": "event.bedside_remote",
+            "new_state": MagicMock(state="press", attributes={"event_type": "1_single"}),
+        }
+        track_call(event_snooze)
+        await asyncio.sleep(0.01)
+        self.assertEqual(alarm.status, STATUS_SNOOZED)
+
+        # 2. Reset to ringing
+        alarm._status = STATUS_RINGING
+
+        # 3. Remote with button 2 single press on unconfigured button must default to Snooze, NOT Dismiss
+        cfg2 = dict(self.config)
+        cfg2[CONF_SNOOZE_BUTTON_ENTITY] = "event.ikea_remote"
+        alarm2 = SmartWakeAlarm(self.hass, "test_ikea_remote", cfg2)
+        alarm2._status = STATUS_RINGING
+        alarm2._setup_active_alarm_listeners()
+
+        track_call2 = None
+        for call in async_track_state_change_event.call_args_list:
+            if "event.ikea_remote" in call[0][1]:
+                track_call2 = call[0][2]
+                break
+        self.assertIsNotNone(track_call2)
+
+        event_ikea_btn2 = MagicMock()
+        event_ikea_btn2.data = {
+            "entity_id": "event.ikea_remote",
+            "new_state": MagicMock(state="press", attributes={"event_type": "button_2_single"}),
+        }
+        track_call2(event_ikea_btn2)
+        await asyncio.sleep(0.01)
+        self.assertEqual(alarm2.status, STATUS_SNOOZED, "button_2_single must snooze and not be misclassified as double click")
+
+        # 4. Configured dismiss event "2_single" on alarm 1 triggers Dismiss
+        alarm._status = STATUS_RINGING
+        event_dismiss = MagicMock()
+        event_dismiss.data = {
+            "entity_id": "event.bedside_remote",
+            "new_state": MagicMock(state="press", attributes={"event_type": "2_single"}),
+        }
+        track_call(event_dismiss)
+        await asyncio.sleep(0.01)
+        self.assertEqual(alarm.status, STATUS_IDLE)
 
 
 if __name__ == "__main__":
