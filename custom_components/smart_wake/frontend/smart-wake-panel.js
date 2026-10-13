@@ -1618,6 +1618,7 @@ class SmartWakePanel extends HTMLElement {
         main_audio_target_volume: Math.round((rawCfg.main_audio_target_volume ?? 0.5) * 100),
         main_tts_enabled: Boolean(rawCfg.main_tts_enabled ?? sumCfg.main_tts_enabled ?? false),
         main_tts_delay: rawCfg.main_tts_delay ?? sumCfg.main_tts_delay ?? 15,
+        main_tts_volume: Math.round((rawCfg.main_tts_volume ?? sumCfg.main_tts_volume ?? 0.6) * 100),
         main_tts_message: rawCfg.main_tts_message ?? "Guten Morgen! Es ist {time} Uhr, draußen sind es {temp}°C.",
         main_tts_engine: rawCfg.main_tts_engine ?? "",
         main_script_entity: rawCfg.main_script_entity ?? "",
@@ -1694,6 +1695,7 @@ class SmartWakePanel extends HTMLElement {
         main_audio_target_volume: 50,
         main_tts_enabled: false,
         main_tts_delay: 15,
+        main_tts_volume: 60,
         main_tts_message: "Guten Morgen! Es ist {time} Uhr, draußen sind es {temp}°C.",
         main_tts_engine: "",
         main_script_entity: "",
@@ -1831,6 +1833,7 @@ class SmartWakePanel extends HTMLElement {
     if (getVal("f_main_audio_target_volume") !== undefined) this._editConfig.main_audio_target_volume = getVal("f_main_audio_target_volume");
     if (getChecked("f_main_tts_enabled") !== undefined) this._editConfig.main_tts_enabled = getChecked("f_main_tts_enabled");
     if (getVal("f_main_tts_delay") !== undefined) this._editConfig.main_tts_delay = getVal("f_main_tts_delay");
+    if (getVal("f_main_tts_volume") !== undefined) this._editConfig.main_tts_volume = getVal("f_main_tts_volume");
     if (getVal("f_main_tts_message") !== undefined) this._editConfig.main_tts_message = getVal("f_main_tts_message");
     if (getVal("f_main_tts_engine") !== undefined) this._editConfig.main_tts_engine = getVal("f_main_tts_engine");
     if (getVal("f_main_script_entity") !== undefined) this._editConfig.main_script_entity = getVal("f_main_script_entity");
@@ -1916,6 +1919,7 @@ class SmartWakePanel extends HTMLElement {
         main_audio_target_volume: (parseInt(this._editConfig.main_audio_target_volume, 10) || 50) / 100,
         main_tts_enabled: Boolean(this._editConfig.main_tts_enabled),
         main_tts_delay: parseInt(this._editConfig.main_tts_delay, 10) ?? 15,
+        main_tts_volume: (parseInt(this._editConfig.main_tts_volume, 10) || 60) / 100,
         main_tts_message: this._editConfig.main_tts_message || "",
         main_tts_engine: this._editConfig.main_tts_engine || null,
         main_script_entity: this._editConfig.main_script_entity || null,
@@ -3188,10 +3192,17 @@ class SmartWakePanel extends HTMLElement {
             </label>
           </div>
 
-          <div class="form-group">
-            <label class="form-label" for="f_main_tts_delay">TTS Verzögerung (Sekunden nach Weckstart)</label>
-            <input class="form-input" id="f_main_tts_delay" type="number" min="0" max="300" value="${cfg.main_tts_delay ?? 15}" />
-            <span class="form-hint">Pausiert die Musik nach N Sekunden, spricht das Briefing und setzt die Wiedergabe fort</span>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="f_main_tts_delay">TTS Verzögerung (Sekunden)</label>
+              <input class="form-input" id="f_main_tts_delay" type="number" min="0" max="300" value="${cfg.main_tts_delay ?? 15}" />
+              <span class="form-hint">Pausiert Musik nach N Sek., spricht TTS und setzt fort</span>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="f_main_tts_volume">TTS Lautstärke (%)</label>
+              <input class="form-input" id="f_main_tts_volume" type="number" min="5" max="100" value="${cfg.main_tts_volume ?? 60}" />
+              <span class="form-hint">Eigene Lautstärke für die Sprachansage</span>
+            </div>
           </div>
 
           <div class="form-group">

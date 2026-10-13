@@ -63,6 +63,7 @@ from .const import (
     CONF_MAIN_TTS_DELAY,
     CONF_MAIN_TTS_ENABLED,
     CONF_MAIN_TTS_MEDIA_PLAYER,
+    CONF_MAIN_TTS_VOLUME,
     CONF_NAME,
     CONF_PERSON_ENTITIES,
     CONF_PERSON_HOME_REQUIRED,
@@ -76,6 +77,7 @@ from .const import (
     CONF_WORKDAY_ENTITY,
     CONF_WORKDAY_ONLY,
     DEFAULT_MAIN_TTS_DELAY,
+    DEFAULT_MAIN_TTS_VOLUME,
     DOMAIN,
     STATUS_SNOOZED,
 )
@@ -159,6 +161,7 @@ def _serialize_alarm(alarm: SmartWakeAlarm) -> dict[str, Any]:
             "pre_alarm_covers": cfg.get(CONF_PRE_ALARM_COVER_ENTITIES, []),
             "main_media_players": cfg.get(CONF_MAIN_MEDIA_PLAYER_ENTITIES, []),
             "main_tts_media_player": cfg.get(CONF_MAIN_TTS_MEDIA_PLAYER, ""),
+            "main_tts_volume": cfg.get(CONF_MAIN_TTS_VOLUME, DEFAULT_MAIN_TTS_VOLUME),
             "main_audio_content": cfg.get(CONF_MAIN_AUDIO_CONTENT_ID),
             "main_tts_enabled": cfg.get(CONF_MAIN_TTS_ENABLED, False),
             "main_tts_delay": cfg.get(CONF_MAIN_TTS_DELAY, DEFAULT_MAIN_TTS_DELAY),

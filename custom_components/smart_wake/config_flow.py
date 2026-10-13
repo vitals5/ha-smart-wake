@@ -134,6 +134,7 @@ from .const import (
     CONF_MAIN_TTS_ENABLED,
     CONF_MAIN_TTS_MEDIA_PLAYER,
     CONF_MAIN_TTS_MESSAGE,
+    CONF_MAIN_TTS_VOLUME,
     CONF_MAX_SNOOZE_COUNT,
     CONF_NAME,
     CONF_PERSON_ENTITIES,
@@ -176,6 +177,7 @@ from .const import (
     DEFAULT_MAIN_TTS_DELAY,
     DEFAULT_MAIN_TTS_ENABLED,
     DEFAULT_MAIN_TTS_MESSAGE,
+    DEFAULT_MAIN_TTS_VOLUME,
     DEFAULT_MAX_SNOOZE_COUNT,
     DEFAULT_NAME,
     DEFAULT_PERSON_HOME_REQUIRED,
@@ -575,6 +577,14 @@ class SmartWakeOptionsFlowHandler(config_entries.OptionsFlow):
                 ): EntitySelector(
                     EntitySelectorConfig(domain="media_player")
                 ) if EntitySelector else str,
+                vol.Required(
+                    CONF_MAIN_TTS_VOLUME,
+                    default=float(
+                        self._options.get(
+                            CONF_MAIN_TTS_VOLUME, DEFAULT_MAIN_TTS_VOLUME
+                        )
+                    ),
+                ): vol.All(vol.Coerce(float), vol.Range(min=0.05, max=1.0)),
                 vol.Required(
                     CONF_MAIN_TTS_DELAY,
                     default=int(

@@ -28,6 +28,7 @@ from custom_components.smart_wake.const import (
     CONF_MAIN_TTS_DELAY,
     CONF_MAIN_TTS_ENABLED,
     CONF_MAIN_TTS_MEDIA_PLAYER,
+    CONF_MAIN_TTS_VOLUME,
     CONF_MAX_SNOOZE_COUNT,
     CONF_NAME,
     CONF_PERSON_ENTITIES,
@@ -587,15 +588,22 @@ class TestSmartWakeCoordinator(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(alarm._unsub_dry_run)  # Dry run loop cancelled on snooze
 
     async def test_dedicated_tts_media_player(self) -> None:
-        """Test dedicated TTS media player pauses music player, speaks on TTS player, and resumes music player."""
+        """Test dedicated TTS media player pauses music player, speaks on TTS player with dedicated volume, and resumes music player."""
         cfg = dict(self.config)
         cfg[CONF_MAIN_MEDIA_PLAYER_ENTITIES] = ["media_player.music_box"]
         cfg[CONF_MAIN_TTS_MEDIA_PLAYER] = "media_player.tts_speaker"
+        cfg[CONF_MAIN_TTS_VOLUME] = 0.75
+        cfg[CONF_MAIN_AUDIO_CONTENT_ID] = "http://stream.radio/live.mp3"
         cfg[CONF_MAIN_TTS_ENABLED] = True
         cfg[CONF_MAIN_TTS_DELAY] = 0
 
         alarm = SmartWakeAlarm(self.hass, "test_tts_player", cfg)
         alarm._status = STATUS_RINGING
+
+        # Mock current state of music player with volume_level 0.4
+        music_state = MagicMock()
+        music_state.attributes = {"volume_level": 0.4}
+        self.hass.states.get = MagicMock(side_effect=lambda entity_id: music_state if entity_id == "media_player.music_box" else None)
 
         # Mock tts engine discovery in hass.states
         tts_state = MagicMock()
@@ -614,7 +622,15 @@ class TestSmartWakeCoordinator(unittest.IsolatedAsyncioTestCase):
             blocking=False,
         )
 
-        # 2. Verify TTS was spoken on dedicated TTS player
+        # 2. Verify TTS player volume was explicitly set to CONF_MAIN_TTS_VOLUME
+        self.hass.services.async_call.assert_any_call(
+            "media_player",
+            "volume_set",
+            {"entity_id": "media_player.tts_speaker", "volume_level": 0.75},
+            blocking=False,
+        )
+
+        # 3. Verify TTS was spoken on dedicated TTS player
         tts_call_found = False
         for call in self.hass.services.async_call.call_args_list:
             if call[0][0] == "tts" and call[0][2].get("media_player_entity_id") == "media_player.tts_speaker":
@@ -622,11 +638,23 @@ class TestSmartWakeCoordinator(unittest.IsolatedAsyncioTestCase):
                 break
         self.assertTrue(tts_call_found, "TTS must be targeted at dedicated TTS player media_player.tts_speaker")
 
-        # 3. Verify music player was resumed
+        # 4. Verify music player original volume was restored
         self.hass.services.async_call.assert_any_call(
             "media_player",
-            "media_play",
-            {"entity_id": "media_player.music_box"},
+            "volume_set",
+            {"entity_id": "media_player.music_box", "volume_level": 0.4},
+            blocking=False,
+        )
+
+        # 5. Verify music player playback was resumed with content_id via play_media
+        self.hass.services.async_call.assert_any_call(
+            "media_player",
+            "play_media",
+            {
+                "entity_id": "media_player.music_box",
+                "media_content_id": "http://stream.radio/live.mp3",
+                "media_content_type": "music",
+            },
             blocking=False,
         )
 
@@ -698,6 +726,58 @@ class TestSmartWakeCoordinator(unittest.IsolatedAsyncioTestCase):
         track_call(event_dismiss)
         await asyncio.sleep(0.01)
         self.assertEqual(alarm.status, STATUS_IDLE)
+
+    async def test_button_snooze_single_and_dismiss_hold_strict_routing(self) -> None:
+        """Test single click strictly snoozes and does NOT dismiss when snooze='single' and dismiss='hold'."""
+        from homeassistant.helpers.event import async_track_state_change_event
+        async_track_state_change_event.reset_mock()
+
+        cfg = dict(self.config)
+        cfg[CONF_SNOOZE_BUTTON_ENTITY] = "sensor.zigbee_switch"
+        cfg[CONF_SNOOZE_BUTTON_EVENT] = "single"
+        cfg[CONF_DISMISS_BUTTON_ENTITY] = "sensor.zigbee_switch"
+        cfg[CONF_DISMISS_BUTTON_EVENT] = "hold"
+
+        alarm = SmartWakeAlarm(self.hass, "test_single_hold", cfg)
+        alarm._status = STATUS_RINGING
+        alarm._setup_active_alarm_listeners()
+
+        track_call = None
+        for call in async_track_state_change_event.call_args_list:
+            if "sensor.zigbee_switch" in call[0][1]:
+                track_call = call[0][2]
+                break
+        self.assertIsNotNone(track_call)
+
+        # Case 1: Single click with zigbee attributes containing supported event types ['single', 'hold']
+        # Must strictly SNOOZE and NOT dismiss due to 'hold' being in the supported types array!
+        event_single = MagicMock()
+        event_single.data = {
+            "entity_id": "sensor.zigbee_switch",
+            "new_state": MagicMock(
+                state="single",
+                attributes={"action": "single", "event_types": ["single", "hold", "double"]},
+            ),
+        }
+        track_call(event_single)
+        await asyncio.sleep(0.01)
+        self.assertEqual(alarm.status, STATUS_SNOOZED, "Single click must strictly snooze!")
+
+        # Reset alarm to ringing
+        alarm._status = STATUS_RINGING
+
+        # Case 2: Hold event must trigger dismiss
+        event_hold = MagicMock()
+        event_hold.data = {
+            "entity_id": "sensor.zigbee_switch",
+            "new_state": MagicMock(
+                state="hold",
+                attributes={"action": "hold", "event_types": ["single", "hold", "double"]},
+            ),
+        }
+        track_call(event_hold)
+        await asyncio.sleep(0.01)
+        self.assertEqual(alarm.status, STATUS_IDLE, "Hold click must dismiss the alarm!")
 
 
 if __name__ == "__main__":

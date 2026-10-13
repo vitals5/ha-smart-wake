@@ -114,6 +114,7 @@ from .const import (
     CONF_MAIN_TTS_MEDIA_PLAYER,
     CONF_MAIN_TTS_MESSAGE,
     CONF_MAIN_TTS_DELAY,
+    CONF_MAIN_TTS_VOLUME,
     CONF_MAX_SNOOZE_COUNT,
     CONF_NAME,
     CONF_PERSON_ENTITIES,
@@ -156,6 +157,7 @@ from .const import (
     DEFAULT_MAIN_TTS_ENABLED,
     DEFAULT_MAIN_TTS_MESSAGE,
     DEFAULT_MAIN_TTS_DELAY,
+    DEFAULT_MAIN_TTS_VOLUME,
     DEFAULT_MAX_SNOOZE_COUNT,
     DEFAULT_NAME,
     DEFAULT_PERSON_HOME_REQUIRED,
@@ -1127,7 +1129,7 @@ class SmartWakeAlarm:
         # 4. Hardware button entity / events (Single click = Snooze, Double click = Dismiss)
         btn_dismiss = self._config.get(CONF_DISMISS_BUTTON_ENTITY)
         btn_snooze = self._config.get(CONF_SNOOZE_BUTTON_ENTITY)
-        tracked_btns = [b for b in (btn_dismiss, btn_snooze) if b]
+        tracked_btns = list(dict.fromkeys(b for b in (btn_dismiss, btn_snooze) if b))
 
         cfg_snooze_events = [
             e.strip().lower()
@@ -1164,15 +1166,44 @@ class SmartWakeAlarm:
                 if not is_timestamp:
                     raw_tokens.append(val)
 
-                for k in ("event_type", "action", "click", "command", "event", "press_type", "subtype"):
-                    v = str(attrs.get(k, "")).strip().lower()
-                    if v and v not in ("none", "null", "unknown", "unavailable"):
-                        raw_tokens.append(v)
+                for k in ("event_type", "action", "click", "command", "press_type", "subtype", "last_action"):
+                    val_k = attrs.get(k)
+                    if isinstance(val_k, (str, int, float)):
+                        s = str(val_k).strip().lower()
+                        if s and s not in ("none", "null", "unknown", "unavailable"):
+                            raw_tokens.append(s)
+                    elif isinstance(val_k, dict):
+                        for sub_k in ("event_type", "action", "command", "click"):
+                            sub_v = val_k.get(sub_k)
+                            if isinstance(sub_v, (str, int, float)):
+                                s = str(sub_v).strip().lower()
+                                if s and s not in ("none", "null", "unknown", "unavailable"):
+                                    raw_tokens.append(s)
+
+                token_words: set[str] = set()
+                for tok in raw_tokens:
+                    token_words.add(tok)
+                    for part in tok.replace("_", " ").replace("-", " ").replace(".", " ").split():
+                        token_words.add(part)
 
                 action_text = " ".join(raw_tokens).lower().strip()
 
+                def matches_configured(event_list: list[str]) -> bool:
+                    for target in event_list:
+                        target = target.strip().lower()
+                        if not target:
+                            continue
+                        if target in token_words:
+                            return True
+                        if any(target == tok or f"_{target}" in tok or f"{target}_" in tok for tok in raw_tokens):
+                            return True
+                    return False
+
+                is_configured_dismiss = matches_configured(cfg_dismiss_events)
+                is_configured_snooze = matches_configured(cfg_snooze_events)
+
                 # 1. Custom configured event types have highest priority
-                if cfg_dismiss_events and any(any(de == tok or de in tok for de in cfg_dismiss_events) for tok in raw_tokens):
+                if is_configured_dismiss:
                     _LOGGER.info(
                         "Smart Wake [%s] Configured dismiss event detected on %s (%s) -> Dismiss",
                         self._name,
@@ -1182,7 +1213,7 @@ class SmartWakeAlarm:
                     self.hass.async_create_task(self.async_dismiss(forced=False))
                     return
 
-                if cfg_snooze_events and any(any(se == tok or se in tok for se in cfg_snooze_events) for tok in raw_tokens):
+                if is_configured_snooze:
                     _LOGGER.info(
                         "Smart Wake [%s] Configured snooze event detected on %s (%s) -> Snooze",
                         self._name,
@@ -1192,7 +1223,19 @@ class SmartWakeAlarm:
                     self.hass.async_create_task(self.async_snooze())
                     return
 
-                # 2. Check dedicated distinct buttons
+                # If a dismiss event was configured (e.g. 'hold'), any press on this button
+                # that did NOT match the dismiss event MUST snooze! It must NEVER dismiss!
+                if cfg_dismiss_events:
+                    _LOGGER.info(
+                        "Smart Wake [%s] Non-dismiss event (%s) on button %s with configured dismiss event -> Snooze",
+                        self._name,
+                        action_text,
+                        ent_id,
+                    )
+                    self.hass.async_create_task(self.async_snooze())
+                    return
+
+                # 2. Check dedicated distinct buttons (only if no custom dismiss event was configured)
                 if btn_snooze and btn_dismiss and btn_snooze != btn_dismiss:
                     if ent_id == btn_dismiss:
                         _LOGGER.info(
@@ -1212,9 +1255,8 @@ class SmartWakeAlarm:
 
                 # 3. Default keyword matching (Shared button or single button configured in either field)
                 # Check for explicit double-click / multi-click / hold keywords
-                # Note: Do NOT match bare '2' because multi-button remotes report 'button_2_press' or '2_single' on button 2!
                 is_explicit_dismiss = any(
-                    kw in action_text
+                    kw in token_words
                     for kw in ("double", "triple", "multi", "hold", "long", "2_click", "double_press", "long_press")
                 )
 
@@ -1228,7 +1270,7 @@ class SmartWakeAlarm:
                     self.hass.async_create_task(self.async_dismiss(forced=False))
                     return
 
-                # Default for single press / any regular button action on shared button: Snooze!
+                # Default for single press / any regular button action on button: Snooze!
                 _LOGGER.info(
                     "Smart Wake [%s] Single click / press on button %s (%s) -> Snooze",
                     self._name,
@@ -1600,7 +1642,7 @@ class SmartWakeAlarm:
     async def _run_tts_sequence(
         self, media_players: list[str], delay_seconds: int
     ) -> None:
-        """Wait configured delay, pause media playback, speak TTS greeting on dedicated TTS player, and resume playback."""
+        """Wait configured delay, pause media playback, speak TTS greeting on dedicated TTS player with custom volume, and resume music playback at original volume."""
         try:
             if delay_seconds > 0:
                 await asyncio.sleep(delay_seconds)
@@ -1614,7 +1656,25 @@ class SmartWakeAlarm:
                 _LOGGER.warning("Smart Wake [%s] No media player available for TTS", self._name)
                 return
 
-            # 1. Pause alarm media player(s) before speaking
+            # A. Record current/target volume of each alarm music player before pause
+            target_vol = float(
+                self._config.get(
+                    CONF_MAIN_AUDIO_TARGET_VOLUME, DEFAULT_MAIN_AUDIO_TARGET_VOLUME
+                )
+            )
+            saved_volumes: dict[str, float] = {}
+            for mp_ent in media_players:
+                cur_vol = target_vol
+                if hasattr(self.hass, "states"):
+                    st = self.hass.states.get(mp_ent)
+                    if st and "volume_level" in getattr(st, "attributes", {}) and st.attributes["volume_level"] is not None:
+                        try:
+                            cur_vol = float(st.attributes["volume_level"])
+                        except (ValueError, TypeError):
+                            pass
+                saved_volumes[mp_ent] = cur_vol
+
+            # B. Pause alarm media player(s) before speaking
             for mp_ent in media_players:
                 try:
                     await self.hass.services.async_call(
@@ -1632,10 +1692,28 @@ class SmartWakeAlarm:
             if self._status != STATUS_RINGING and not self._is_dry_run:
                 return
 
-            # 2. Speak greeting on dedicated TTS player
+            # C. Set dedicated TTS volume on tts_player
+            tts_vol = float(
+                self._config.get(CONF_MAIN_TTS_VOLUME, DEFAULT_MAIN_TTS_VOLUME)
+            )
+            try:
+                await self.hass.services.async_call(
+                    "media_player",
+                    "volume_set",
+                    {"entity_id": tts_player, "volume_level": tts_vol},
+                    blocking=False,
+                )
+                await asyncio.sleep(0.3)
+            except Exception as err:
+                _LOGGER.debug("Could not set volume on TTS player %s: %s", tts_player, err)
+
+            if self._status != STATUS_RINGING and not self._is_dry_run:
+                return
+
+            # D. Speak greeting on dedicated TTS player
             await self._speak_greeting(tts_player)
 
-            # 3. Wait for TTS output to finish speaking
+            # E. Wait for TTS output to finish speaking
             raw_msg = self._config.get(CONF_MAIN_TTS_MESSAGE, DEFAULT_MAIN_TTS_MESSAGE)
             word_count = len(str(raw_msg).split())
             speech_duration = 3 if self._is_dry_run else max(5.0, word_count * 0.45 + 2.5)
@@ -1644,17 +1722,51 @@ class SmartWakeAlarm:
             if self._status != STATUS_RINGING and not self._is_dry_run:
                 return
 
-            # 4. Resume alarm media playback
+            # F. Explicitly restore original music volume on alarm media players
             for mp_ent in media_players:
+                restore_vol = saved_volumes.get(mp_ent, target_vol)
                 try:
                     await self.hass.services.async_call(
                         "media_player",
-                        "media_play",
-                        {"entity_id": mp_ent},
+                        "volume_set",
+                        {"entity_id": mp_ent, "volume_level": restore_vol},
                         blocking=False,
                     )
                 except Exception as err:
-                    _LOGGER.debug("Could not resume media player %s after TTS: %s", mp_ent, err)
+                    _LOGGER.debug("Could not restore volume on %s: %s", mp_ent, err)
+
+            # G. Wait briefly (0.5s) as requested before resuming playback
+            await asyncio.sleep(0.5)
+
+            if self._status != STATUS_RINGING and not self._is_dry_run:
+                return
+
+            # H. Resume music playback reliably:
+            content_id = self._config.get(CONF_MAIN_AUDIO_CONTENT_ID)
+            content_type = self._config.get(CONF_MAIN_AUDIO_CONTENT_TYPE, "music")
+
+            for mp_ent in media_players:
+                try:
+                    if content_id:
+                        await self.hass.services.async_call(
+                            "media_player",
+                            "play_media",
+                            {
+                                "entity_id": mp_ent,
+                                "media_content_id": content_id,
+                                "media_content_type": content_type,
+                            },
+                            blocking=False,
+                        )
+                    else:
+                        await self.hass.services.async_call(
+                            "media_player",
+                            "media_play",
+                            {"entity_id": mp_ent},
+                            blocking=False,
+                        )
+                except Exception as err:
+                    _LOGGER.debug("Could not resume media playback on %s: %s", mp_ent, err)
         except asyncio.CancelledError:
             pass
         except Exception as err:
