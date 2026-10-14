@@ -43,13 +43,36 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async_register_websocket_api(hass)
     async_register_services(hass)
 
-    # Register Voice Assist Intents
+    # Register Voice Assist Intents & sync custom sentences to /config/custom_sentences/
     async_setup_intents(hass)
+    _sync_custom_sentences(hass)
 
     # Register Static HTTP assets & custom sidebar panel
     await _async_setup_frontend(hass)
 
     return True
+
+
+def _sync_custom_sentences(hass: HomeAssistant) -> None:
+    """Ensure custom sentence files are copied to /config/custom_sentences/<lang>/ so Assist loads them."""
+    try:
+        if not hasattr(hass, "config") or not hasattr(hass.config, "path"):
+            return
+        import shutil
+        src_base = os.path.join(os.path.dirname(__file__), "custom_sentences")
+        if not os.path.isdir(src_base):
+            return
+        for lang in ("de", "en"):
+            src_file = os.path.join(src_base, lang, "smart_wake.yaml")
+            if not os.path.isfile(src_file):
+                continue
+            dest_dir = hass.config.path("custom_sentences", lang)
+            dest_file = os.path.join(dest_dir, "smart_wake.yaml")
+            os.makedirs(dest_dir, exist_ok=True)
+            shutil.copy2(src_file, dest_file)
+            _LOGGER.debug("Synchronized Smart Wake custom sentences to %s", dest_file)
+    except Exception as err:
+        _LOGGER.debug("Could not auto-sync custom sentences: %s", err)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

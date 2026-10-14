@@ -61,6 +61,21 @@ class TestSmartWakeInit(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(unload_res)
         self.assertNotIn("test_entry_123", self.hass.data[DOMAIN])
 
+    async def test_sync_custom_sentences(self) -> None:
+        """Test auto-synchronization of custom sentence YAMLs."""
+        import os
+        import tempfile
+        from custom_components.smart_wake import _sync_custom_sentences
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            self.hass.config = MagicMock()
+            self.hass.config.path = MagicMock(side_effect=lambda *args: os.path.join(tmp_dir, *args))
+            _sync_custom_sentences(self.hass)
+            de_file = os.path.join(tmp_dir, "custom_sentences", "de", "smart_wake.yaml")
+            en_file = os.path.join(tmp_dir, "custom_sentences", "en", "smart_wake.yaml")
+            self.assertTrue(os.path.exists(de_file))
+            self.assertTrue(os.path.exists(en_file))
+
 
 if __name__ == "__main__":
     unittest.main()
