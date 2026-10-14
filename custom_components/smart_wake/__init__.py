@@ -102,7 +102,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _async_setup_frontend(hass: HomeAssistant) -> None:
-    """Register HTTP static path, Lovelace dashboard card, and custom sidebar panel."""
+    """Register HTTP static path and custom sidebar panel."""
     # 1. Register static path for frontend assets and brand files
     if hasattr(hass, "http"):
         if hasattr(hass.http, "async_register_static_paths"):
@@ -132,54 +132,36 @@ async def _async_setup_frontend(hass: HomeAssistant) -> None:
     except Exception:
         pass
 
-    card_url = f"{URL_BASE}/smart-wake-card.js?v={version_str}"
     panel_url = f"{URL_BASE}/smart-wake-panel.js?v={version_str}"
 
-    # 2. Register Lovelace card via add_extra_js_url
-    if not hass.data.get(f"{DOMAIN}_card_registered"):
-        hass.data[f"{DOMAIN}_card_registered"] = True
+    # Clean up any legacy Lovelace card resources if registered
+    async def _async_cleanup_legacy_card_resource() -> None:
         try:
-            from homeassistant.components.frontend import add_extra_js_url
-            add_extra_js_url(hass, card_url)
-            _LOGGER.info("Registered Smart Wake Lovelace card: %s", card_url)
+            lovelace = hass.data.get("lovelace")
+            if not lovelace:
+                return
+            resources = getattr(lovelace, "resources", None)
+            if not resources:
+                return
+            if not getattr(resources, "loaded", True) and hasattr(resources, "async_load"):
+                try:
+                    await resources.async_load()
+                except Exception:
+                    pass
+            for item in resources.async_items():
+                url = item.get("url", "")
+                if url.startswith(f"{URL_BASE}/smart-wake-card.js") and hasattr(resources, "async_delete_item"):
+                    await resources.async_delete_item(item["id"])
+                    _LOGGER.info("Removed legacy Smart Wake Lovelace card resource: %s", url)
         except Exception as err:
-            _LOGGER.debug("Could not register Lovelace card via add_extra_js_url: %s", err)
+            _LOGGER.debug("Could not clean up legacy Lovelace card resource: %s", err)
 
-        # Also auto-register in Lovelace resources storage collection if available
-        async def _async_register_lovelace_resource() -> None:
-            try:
-                lovelace = hass.data.get("lovelace")
-                if not lovelace:
-                    return
-                resources = getattr(lovelace, "resources", None)
-                if not resources:
-                    return
-                if not getattr(resources, "loaded", True) and hasattr(resources, "async_load"):
-                    try:
-                        await resources.async_load()
-                    except Exception:
-                        pass
-                existing = None
-                for item in resources.async_items():
-                    url = item.get("url", "")
-                    if url.startswith(f"{URL_BASE}/smart-wake-card.js"):
-                        existing = item
-                        break
-                if existing:
-                    if existing.get("url") != card_url and hasattr(resources, "async_update_item"):
-                        await resources.async_update_item(existing["id"], {"res_type": "module", "url": card_url})
-                elif hasattr(resources, "async_create_item"):
-                    await resources.async_create_item({"res_type": "module", "url": card_url})
-                    _LOGGER.info("Auto-registered Smart Wake Lovelace resource: %s", card_url)
-            except Exception as err:
-                _LOGGER.debug("Could not auto-register Lovelace resource: %s", err)
-
-        if getattr(hass, "is_running", True):
-            hass.async_create_task(_async_register_lovelace_resource())
-        elif hasattr(hass, "bus"):
-            async def _on_ha_started(_event: Any) -> None:
-                await _async_register_lovelace_resource()
-            hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _on_ha_started)
+    if getattr(hass, "is_running", True):
+        hass.async_create_task(_async_cleanup_legacy_card_resource())
+    elif hasattr(hass, "bus"):
+        async def _on_ha_started(_event: Any) -> None:
+            await _async_cleanup_legacy_card_resource()
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _on_ha_started)
 
     # 3. Register custom sidebar panel
     if not hass.data.get(f"{DOMAIN}_panel_registered"):
