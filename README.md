@@ -3,7 +3,7 @@
 </p>
 
 <h1 align="center">Smart Wake</h1>
-<p align="center"><b>Smarter Wecker für Home Assistant mit dynamischen Bedingungen, Phasen-Aktionen, Eskalation & Custom Side Panel Dashboard</b></p>
+<p align="center"><b>Smart Alarm Clock for Home Assistant with Dynamic Conditions, Multi-Phase Wakeup, Anti-Cheat Dismissal & Custom Side Panel Dashboard</b></p>
 
 <p align="center">
   <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=vitals5&repository=ha-smart-wake&category=integration"><img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Open your Home Assistant instance and open a repository inside the Home Assistant Community Store."></a>
@@ -18,250 +18,239 @@
 
 ---
 
-**Smart Wake** ist eine hochgradig anpassbare Custom Integration für Home Assistant, die das Konzept des klassischen Weckers revolutioniert. Sie kombiniert native Home Assistant Entitäten, intelligentes Sensor-Gating, eine dynamische Wetter- und Schlafphasen-Verschiebung, eine dreistufige Wecksequenz (Pre-Alarm bis Eskalation), echte Anti-Cheat-Quittierungen sowie ein dediziertes Custom Side Panel Dashboard.
+**Smart Wake** is a powerful, highly customizable custom integration for Home Assistant designed to revolutionize how you wake up. It combines native Home Assistant entities, intelligent sensor gating, dynamic weather and sleep-stage offsets, a gentle three-phase wakeup sequence (Pre-Alarm sunrise, Main Alarm with soft fade-in & delayed TTS briefing, Escalation), bulletproof Anti-Cheat proof-of-wakeup mechanisms, and an intuitive standalone Side Panel Dashboard.
 
 ---
 
-## Inhaltsverzeichnis
+## Table of Contents
 
-- [Architektur & Instanz-Modell](#1-integrations-architektur--instanz-modell)
-- [Intelligente Bedingungen & Dynamisches Triggern](#2-intelligente-bedingungen--dynamisches-triggern)
-- [3-Phasen-Aktionen & Sequenzen](#3-phasen-aktionen--sequenzen)
-- [Quittierung, Schlummern & Anti-Cheat](#4-quittierung-schlummern--anti-cheat)
-- [Home Assistant Voice Assist](#5-voice-assist-integration)
-- [Dediziertes Side Panel Dashboard](#6-custom-side-panel-dashboard)
-- [Automations-Blueprints](#automations-blueprints)
+- [Integration Architecture & Entity Model](#1-integration-architecture--entity-model)
+- [Intelligent Conditions & Dynamic Triggers](#2-intelligent-conditions--dynamic-triggers)
+- [3-Phase Wakeup Sequence](#3-3-phase-wakeup-sequence)
+- [Dismissal, Snooze & Anti-Cheat System](#4-dismissal-snooze--anti-cheat-system)
+- [Comprehensive Testing Modes](#5-comprehensive-testing-modes)
+- [Custom Side Panel Dashboard](#6-custom-side-panel-dashboard)
+- [Voice Assist & Intent Integration](#7-voice-assist--intent-integration)
+- [Automation Blueprints](#8-automation-blueprints)
 - [Installation](#installation)
-- [Dienste (Services)](#dienste-services)
-- [Lizenz](#lizenz)
+- [Services](#services)
+- [License](#license)
 
 ---
 
-## 1. Integrations-Architektur & Instanz-Modell
+## 1. Integration Architecture & Entity Model
 
-Smart Wake basiert auf dem modernen Home Assistant `config_flow`-System:
-* **Eigenständige Wecker-Instanzen:** Jede Instanz repräsentiert einen individuellen Wecker (z. B. *„Wecker Schlafzimmer“*, *„Wecker Kinderzimmer Richard“* oder *„Sanftes Erwachen Büro“*).
-* **Eigener Config Entry pro Wecker:** Bequem über die HA-Oberfläche (*Einstellungen → Geräte & Dienste*) oder direkt über das Smart Wake Dashboard einricht- und editierbar.
-* **Erzeugte Entitäten pro Instanz:**
-  | Entität | Typ | Beschreibung |
+Smart Wake is built on Home Assistant's modern `config_flow` architecture:
+* **Independent Alarm Instances:** Each instance represents an individual alarm (e.g., *"Master Bedroom"*, *"Kids Room"*, or *"Gentle Sunrise"*).
+* **Dedicated Config Entry per Alarm:** Easily configured and edited via the Home Assistant UI (*Settings → Devices & Services*) or directly through the Smart Wake Side Panel.
+* **Entities Created per Alarm Instance:**
+  | Entity | Type | Description |
   |---|---|---|
-  | `time.<wecker_name>_time` | Native Time Entity | Direkte Zeiteinstellung via UI, Lovelace oder Sprachassistent (`time.set_value`). |
-  | `switch.<wecker_name>_enabled` | Switch | Aktiviert oder deaktiviert den Wecker. |
-  | `sensor.<wecker_name>_status` | Sensor | Live-Zustand: `idle`, `pre_alarm`, `ringing`, `snoozed`, `dismissed`, `skipped`. |
-  | `sensor.<wecker_name>_next_alarm` | Timestamp Sensor | Nächster geplanter Weckzeitpunkt inkl. Wetter-Offset und Countdown-Attributen. |
-  | `sensor.<wecker_name>_active_phase` | Sensor | Aktive Phase: `none`, `pre_alarm`, `main_alarm`, `escalation`. |
-  | `sensor.<wecker_name>_snooze_count` | Sensor | Aktueller Schlummer-Zähler im laufenden Weckzyklus. |
-  | `sensor.<wecker_name>_dynamic_offset` | Sensor | Berechnete Weckzeitverschiebung in Minuten (z. B. Frost/Regen). |
-  | `button.<wecker_name>_snooze` | Button | Manuelles Schlummern. |
-  | `button.<wecker_name>_dismiss` | Button | Manuelles Quittieren / Beenden. |
-  | `button.<wecker_name>_full_test` | Button | Startet einen vollständigen Echtzeit-Testlauf (Licht, Audio, TTS, Anti-Cheat, Eskalation). |
-  | `button.<wecker_name>_test` | Button | Startet den 30-Sekunden-Zeitraffer-Testlauf. |
-  | `button.<wecker_name>_skip_next` | Button | Überspringt einmalig den nächsten regulären Wecklauf. |
-  | `number.<wecker_name>_snooze_duration` | Number (min) | Einstellbare Schlummerdauer (1 bis 60 Min, Standard: 9). |
-  | `number.<wecker_name>_max_snooze_count` | Number | Maximal erlaubte Schlummer-Vorgänge (0 bis 10, Standard: 3). |
-  | `number.<wecker_name>_pre_alarm_duration` | Number (min) | Dauer der sanften Vor-Alarm-Phase (0 bis 60 Min, Standard: 15). |
+  | `time.<alarm_name>_time` | Native Time Entity | Direct alarm time adjustment via UI, Lovelace, or Voice Assist (`time.set_value`). |
+  | `switch.<alarm_name>_enabled` | Switch | Enables or disables the alarm clock. |
+  | `sensor.<alarm_name>_status` | Sensor | Real-time status: `idle`, `pre_alarm`, `ringing`, `snoozed`, `dismissed`, `skipped`. |
+  | `sensor.<alarm_name>_next_alarm` | Timestamp Sensor | Next scheduled trigger time including dynamic weather offsets, with countdown attributes. |
+  | `sensor.<alarm_name>_active_phase` | Sensor | Current active phase: `none`, `pre_alarm`, `main_alarm`, `escalation`. |
+  | `sensor.<alarm_name>_snooze_count` | Sensor | Number of snooze cycles used in the active wakeup sequence. |
+  | `sensor.<alarm_name>_dynamic_offset` | Sensor | Calculated early wake offset in minutes (frost or rain). |
+  | `button.<alarm_name>_snooze` | Button | Triggers manual snooze. |
+  | `button.<alarm_name>_dismiss` | Button | Triggers manual dismissal / stop. |
+  | `button.<alarm_name>_full_test` | Button | Launches an interactive real-time test run (lights, audio fade-in, TTS, Anti-Cheat, escalation). |
+  | `button.<alarm_name>_test` | Button | Runs a fast 30-second time-lapse simulation. |
+  | `button.<alarm_name>_skip_next` | Button | Skips the next scheduled alarm trigger once without disabling the schedule. |
+  | `number.<alarm_name>_snooze_duration` | Number (min) | Configurable snooze length (1 to 60 minutes, default: 9). |
+  | `number.<alarm_name>_max_snooze_count` | Number | Maximum allowed snoozes before snooze is blocked (0 to 10, default: 3). |
+  | `number.<alarm_name>_pre_alarm_duration` | Number (min) | Duration of the gentle sunrise pre-alarm phase (0 to 60 minutes, default: 15). |
 
 ---
 
-## 2. Intelligente Bedingungen & Dynamisches Triggern
+## 2. Intelligent Conditions & Dynamic Triggers
 
-Vor dem Wecken durchläuft jede Instanz eine intelligente Prüf- und Offset-Pipeline:
+Before triggering, each alarm evaluates a smart condition and offset pipeline:
 
-```mermaid
-flowchart TD
-    A[Ziel-Weckzeitpunkt berechnen] --> B{Wetter-Sensoren prüfen}
-    B -- "Außentemp < 0 °C" --> C[Frühwecker: -15 Min Scheiben kratzen]
-    B -- "Regen aktiv" --> D[Frühwecker: -10 Min Staugefahr]
-    B -- "Normal" --> E[Normale Weckzeit]
-    C --> F[Aktualisierte Zielzeit]
-    D --> F
-    E --> F
-    F --> G{Bedingungs-Pipeline}
-    G -- "Person nicht home" --> H[Status: SKIPPED]
-    G -- "Kein Werktag / Kalender-Filter" --> H
-    G -- "Bedingungen erfüllt" --> I[Phase 1: Pre-Alarm starten]
-    I --> J{Sleep-Tracker Leichtschlaf?}
-    J -- "Ja innerhalb 30m" --> K[Sofortiger Frühstart Hauptalarm]
-    J -- "Nein" --> L[Hauptalarm zur Zielzeit]
-```
-
-* **Werktage & Kalender:**
-  * Direkte Kopplung mit `binary_sensor.workday_sensor` (nur an Arbeitstagen klingeln).
-  * HA-Kalender-Integration (`calendar.*`): Optionales Auslösen nur bei Kalenderterminen oder Überspringen bei Urlaub/Schulferien.
-* **Personen- & Anwesenheits-Tracking:**
-  * Bindung an `person.*`-Entitäten. Ist die zugewiesene Person nicht zu Hause (`not_home`), überspringt der Wecker automatisch den Lauf (`status: skipped`).
-* **Schlechtwetter- & Winter-Offset (Dynamische Weckzeitverschiebung):**
-  * **Frost-Schutz:** Fällt die Außentemperatur unter 0 °C (z. B. `sensor.outdoor_temperature`), weckt der Wecker automatisch $X$ Minuten früher zum Scheiben kratzen.
-  * **Regen-Erkennung:** Schlagen Regensensoren an, wird die Weckzeit um $Y$ Minuten vorverlegt.
-* **Sleep-Tracker-Integration (Smart Wake Fenster):**
-  * Überwacht Schlaftracker (z. B. Withings, Sleep As Android, Garmin, Apple Watch). Wechselt der Schlafstatus innerhalb von 30 Minuten vor dem Wecker auf Leichtschlaf (`light`, `awake`), startet die Wecksequenz im optimalen Biorhythmus-Moment.
+* **Workday & Calendar Filters:**
+  * Direct integration with `binary_sensor.workday_sensor` (only ring on business days).
+  * HA Calendar integration (`calendar.*`): Trigger only when calendar events match, or skip on holidays/vacation days.
+* **Presence & Person Tracking:**
+  * Tied to `person.*` entities. If the assigned person is not home (`not_home`), the alarm automatically skips (`status: skipped`).
+* **Dynamic Weather & Winter Offsets:**
+  * **Frost Detection:** If outside temperature falls below a set threshold (e.g., `sensor.outdoor_temperature` < 0 °C), the alarm triggers $X$ minutes early to allow time for de-icing car windows.
+  * **Rain Detection:** If rain is detected by rain sensors, wake time shifts earlier by $Y$ minutes to compensate for traffic delays.
+* **Sleep Tracker Integration (Smart Wake Window):**
+  * Monitors sleep stage sensors (e.g., Withings Sleep, Sleep As Android, Apple Watch, Garmin).
+  * If a transition to light sleep (`light`, `awake`) occurs within a configurable window (e.g., 30 minutes before alarm time), Smart Wake triggers immediately to wake you at the ideal point in your sleep cycle.
 
 ---
 
-## 3. Phasen-Aktionen & Sequenzen
+## 3. 3-Phase Wakeup Sequence
 
-Jede Wecker-Instanz durchläuft drei aufeinanderfolgende Phasen:
+Each alarm sequence progresses through up to three distinct phases:
 
-### Phase 1: Pre-Alarm (Sanftes Wecken)
-* Startet $X$ Minuten vor der Weckzeit (Standard: 15 Minuten).
-* **Licht-Transition:** Dimmbare Lampen (`light.*`) fahren über die gesamte Vor-Alarm-Dauer sanft von warmem Rot (1 %) bis zu tageslichtweißem Gelb (80 %) hoch.
-* **Rollos / Jalousien:** Kippt die Lamellen auf 20 % an (`cover.*`).
-* **Skripte:** Führt optionale HA-Skripte (`script.*`) aus.
+### Phase 1: Pre-Alarm (Gentle Sunrise Wakeup)
+* Starts $X$ minutes before the alarm time (default: 15 minutes).
+* **Light Transition:** Dimmable lights (`light.*`) gradually brighten from warm deep red (1%) up to daylight yellow/white (up to 100%).
+* **Cover / Blind Control:** Tilts or raises blinds/shutters to a gentle position (e.g., 20%).
+* **Scripts:** Executes an optional Home Assistant pre-alarm script (`script.*`).
 
-### Phase 2: Hauptalarm (Weckzeitpunkt)
-* **Sanfter Audio-Fade-in:** Startet Web-Radio, Spotify-Playlists, lokale Chimes oder Sound-Dateien auf `media_player.*` und blendet die Lautstärke über konfigurierbare Sekunden (z. B. 30s) sanft auf die Ziellautstärke (z. B. 50 %) ein.
-* **TTS-Morgenbriefing:** Liest ein dynamisches Template vor:
-  > *„Guten Morgen! Es ist {time} Uhr, draußen sind es {temp}. Dein Wecker {name} ist aktiv.“*
-* **HA-Skripte:** Ausführen individueller Aktionsfolgen.
+### Phase 2: Main Alarm (Wakeup Time)
+* **Soft Audio Fade-In:**
+  * Sets the starting volume first, waits 0.5s to prevent loud initial audio bursts, and then smoothly ramps the volume up over a configurable duration (e.g., 30s) to the target volume (e.g., 50%).
+  * Plays internet radio streams, Spotify playlists, chimes, or local audio files on any `media_player.*`.
+* **Intelligent Delayed TTS Morning Briefing:**
+  * Configurable delay (e.g., 15s after audio starts) allowing you to gently wake up before speaking.
+  * Pauses music playback and records the current music volume.
+  * Dedicated **TTS Media Player** support (`main_tts_media_player`): Use a separate speaker for speech (e.g., Google Nest or Alexa) while another plays music.
+  * Dedicated **TTS Volume** setting (`main_tts_volume`, e.g., 60%): Guarantees crisp, clear voice announcements regardless of background music volume.
+  * Dynamic template placeholders: `{name}`, `{time}`, `{temp}`.
+  * After the announcement finishes, original music player volume is explicitly restored, followed by a 0.5s pause, and playback is seamlessly resumed (`play_media` / `media_play`).
+* **Scripts:** Executes an optional main alarm script (`script.*`).
 
-### Phase 3: Eskalations-Modus (Anti-Verschlaf-Schutz)
-* Wenn nach $Y$ Minuten (Standard: 10 Minuten) weder Schlummern noch Quittieren betätigt wurde:
-  * **Audio-Lautstärke:** Sanfter, kontinuierlicher Anstieg der Lautstärke auf bis zu 90 % (konfigurierbare Fade-Dauer, z. B. 30 Sekunden).
-  * **Volle Beleuchtung:** Raum-Hauptbeleuchtung schaltet auf 100 % Kaltweiß (6500 K).
-  * **Rollos:** Fahren zu 100 % komplett nach oben.
-
----
-
-## 4. Quittierung, Schlummern & Anti-Cheat
-
-### Intelligente Anti-Cheat Quittierung
-* **Aufsteh-Beweis vor Quittierung:** Sind Anti-Cheat Bedingungen hinterlegt, wirkt jeder Quittierungsversuch (über UI, Dashboard, Button-Entität, Voice Assist oder Hardware-Taster) zunächst **wie Schlummern**, bis der reale Aufsteh-Beweis erbracht ist.
-* **Bedingungslose Quittierung:** Sind *keine* Anti-Cheat Bedingungen eingetragen, ist die Quittierung sofort endgültig wirksam.
-* **Endgültige Quittierung:** Sobald mindestens eine der konfigurierten Anti-Cheat Bedingungen erfüllt ist:
-  * **Bewegungsmelder:** Präsenzmelder im Badezimmer oder in der Küche meldet Bewegung (`binary_sensor.*`).
-  * **NFC-Tag:** Physischer NFC-Tag am Badezimmerspiegel oder an der Kaffeemaschine wird gescannt (`tag_scanned`).
-  * **Leistungssensor:** Leistungsaufnahme (z. B. Kaffeemaschine oder Badezimmerlicht) überschreitet den Watt-Schwellenwert (`sensor.*` > X W).
-  wird der Wecker endgültig quittiert und beendet.
-
-### Schlummer-Funktion (Snooze)
-* Einstellbare Schlummerdauer (z. B. 5, 8, 9, 10 Minuten).
-* **Snooze-Limit:** Nach Erreichen der maximalen Schlummer-Anzahl wird der Schlummer-Button blockiert – ohne Erfüllung der Anti-Cheat Bedingung klingelt der Wecker weiter!
-* **Echtzeit-Testmodus:** Sowohl Schlummern als auch Quittieren (inklusive Anti-Cheat Verifikation) lassen sich im **vollen Testlauf** gefahrlos testen (mit beschleunigtem 30-Sekunden-Schlummerfenster).
+### Phase 3: Escalation Mode (Anti-Oversleep Protection)
+* Activated if no snooze or dismissal occurs after $Y$ minutes (default: 10 minutes):
+  * **Volume Escalation:** Smooth, continuous fade-in up to escalation volume (e.g., 90–100%).
+  * **Full Lighting:** Switches room lights to 100% brightness and crisp cold white (6500 K).
+  * **Covers:** Opens blinds and shutters completely (100%).
+  * **Scripts:** Executes an optional escalation script.
 
 ---
 
-## 5. Voice Assist Integration
+## 4. Dismissal, Snooze & Anti-Cheat System
 
-Smart Wake unterstützt Home Assistant Assist und LLM-Integrationen über vordefinierte Sprachmuster auf Deutsch und Englisch:
+### Anti-Cheat Proof-of-Wakeup Dismissal
+* **Snooze-Diverted Dismissal:** When Anti-Cheat conditions are configured, any attempt to dismiss the alarm (via UI, Side Panel, button entity, Voice Assist, or hardware buttons) automatically acts as **Snooze** until the physical proof-of-wakeup is satisfied.
+* **Immediate Dismissal:** If no Anti-Cheat conditions are defined, dismissal takes effect immediately.
+* **Bypass-Proof Max Snooze Enforcement:** Even if the maximum snooze limit is reached, dismissal remains diverted to snooze if Anti-Cheat conditions are active—preventing you from turning off the alarm while still in bed.
+* **Supported Anti-Cheat Conditions (Any can fulfill):**
+  * **Motion / Presence Sensors:** Detects movement in the bathroom or kitchen (`binary_sensor.*`).
+  * **NFC Tag:** Scanning a physical NFC tag located at the coffee maker or bathroom mirror (`tag_scanned`).
+  * **Power Consumption Threshold:** Smart plug power draw exceeds threshold (e.g., coffee machine or electric kettle > 10 W).
+  * **Input Boolean Helper:** Any custom `input_boolean.*` helper (toggled by external automations, tasks, or smart devices). Automatically resets back to `off` upon successful dismissal!
 
-* **Weckzeit setzen:**
-  * *„Stelle den Wecker Schlafzimmer auf 06:45 Uhr.“*
-  * *„Wecke mich morgen um 7 Uhr.“*
-* **Status umschalten:**
-  * *„Schalte den Wecker Schlafzimmer aus.“*
-  * *„Aktiviere den Schul-Wecker.“*
-* **Schlummern & Stoppen:**
-  * *„Fünf Minuten weiterschlafen.“* → Triggert Snooze.
-  * *„Ich bin wach.“* / *„Wecker stoppen.“* → Triggert Dismiss.
+### Snooze (Schlummern)
+* Configurable duration (e.g., 5, 8, 9, 10 minutes).
+* **Max Snooze Limit:** Once the maximum allowed snoozes are exhausted, manual snooze is blocked.
+* In full test mode, snooze can be safely tested using an accelerated 30-second window.
+
+### Hardware Button Control with Strict Event Routing
+* Connect any Zigbee, Z-Wave, or Matter button / remote (`sensor.*` or `event.*`).
+* **Configurable Event Types:** Assign explicit event types for Snooze (e.g., `single` or `1_single`) and Dismiss (e.g., `hold`, `double`, or `2_single`).
+* **Strict Event Isolation:** If a dismiss event is configured (e.g., `hold`), single clicks strictly trigger Snooze and can never accidentally dismiss the alarm—even on remotes sending complex attribute dictionaries.
+
+---
+
+## 5. Comprehensive Testing Modes
+
+Smart Wake provides two built-in testing mechanisms to verify your setup without waiting for tomorrow morning:
+
+1. **Full Real-Time Test Run (`button.<name>_full_test`):**
+   * Executes the real-time wakeup sequence with live lights, audio fade-in, TTS greeting, and escalation timer.
+   * Can be launched from Phase 1 (Pre-Alarm) or directly from Phase 2 (Main Alarm).
+   * Supports live testing of Snooze, Dismiss, and Anti-Cheat sensors (hardware buttons, motion, NFC tags, power sensors, input_booleans) with an accelerated 30-second snooze countdown.
+   * Prominent test banner in the Side Panel with live phase indicator and one-click "Stop Test" button.
+2. **30-Second Fast Simulation / Dry-Run (`button.<name>_test`):**
+   * A rapid 30-second time-lapse simulation cycling through all phases with a live progress bar to quickly verify light transitions and entity actions.
 
 ---
 
 ## 6. Custom Side Panel Dashboard
 
-Die Integration registriert automatisch ein eigenes Icon in der Seitenleiste von Home Assistant (`/smart-wake`):
+Smart Wake automatically registers a dedicated entry in the Home Assistant sidebar (`/smart-wake`):
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  SMART WAKE DASHBOARD                       [ + Neuer Wecker]│
-├─────────────────────────────────────────────────────────────┤
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │ ⏰ Wecker Schlafzimmer                       [ AKTIV ] │  │
-│  │ Zeit: 06:30 Uhr   |  Status: IDLE                     │  │
-│  │ Tage: Mo, Di, Mi, Do, Fr  |  Workday-Filter: AN       │  │
-│  │ Person: Vitali (Nur auslösen wenn anwesend)          │  │
-│  ├───────────────────────────────────────────────────────┤  │
-│  │ Phasen:                                               │  │
-│  │  - 06:15: Pre-Alarm (Licht Fade-in, Rollos 20%)       │  │
-│  │  - 06:30: Hauptalarm (TTS Briefing + Radio Lounge)    │  │
-│  │  - 06:40: Eskalation (Volles Licht, Lautstärke 80%)  │  │
-│  ├───────────────────────────────────────────────────────┤  │
-│  │ Quittierung: Zigbee Taster Schlafzimmer (Doppelklick) │  │
-│  │ Schlummern: 8 Min (Max: 2x)                           │  │
-│  │                                 [Bearbeiten] [Testen] │  │
-│  └───────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-```
-
-* **Live-Status-Monitoring:** Countdown bis zum nächsten Alarm unter Berücksichtigung aller Wetter-Offsets.
-* **In-Panel Konfiguration:** Alle Einstellungen (Allgemein, Bedingungen, Phasen 1-3, Quittierung & Anti-Cheat) sowie das Anlegen und Löschen von Weckern können komfortabel direkt im Side Panel vorgenommen werden – ohne Umweg über das HA-Einstellungsmenü!
-* **Voller Echtzeit-Testlauf:** Startet einen vollständigen, echten Testlauf (wahlweise ab Phase 1 Pre-Alarm oder direkt ab Phase 2 Hauptalarm) mit Live-Audio, TTS-Morgenbriefing, Eskalationstimer und aktiven Anti-Cheat-Quittierungs-Sensoren (Taster, Bewegung, Leistungsmesser, NFC).
-* **30s Zeitraffer-Testlauf (Dry-Run):** Beschleunigte 30-Sekunden-Simulation aller 3 Phasen mit Fortschrittsbalken zum schnellen Checken der Aktionen.
-* **Direkt-Aktionen:** Schnelles Umschalten, Schlummern, Quittieren und Beenden von Testläufen direkt im Dashboard.
+* **Live Status & Countdown:** Displays active status, live countdown to the next alarm, and current dynamic offsets.
+* **Full In-Panel Management:** Create, configure, clone, test, and delete alarms directly from the Side Panel—no need to navigate through Home Assistant's integration menus.
+* **Live Search Autocomplete:** Entity input fields provide interactive autocomplete with domain icons, friendly names, and live state previews.
+* **Direct Actions:** One-click toggling, manual snooze, dismissal, and full test controls directly in the browser with responsive mobile layouts.
 
 ---
 
-## Automations-Blueprints
+## 7. Voice Assist & Intent Integration
 
-Smart Wake liefert gebrauchsfertige Blueprints mit 1-Click-Import für Home Assistant mit:
+Smart Wake integrates with Home Assistant Assist and LLM pipelines using predefined voice patterns in English and German:
 
-### 1. Anti-Cheat Quittierung
-Quittiert automatisch, sobald Bewegung im Bad oder Aktivität an der Kaffeemaschine erkannt wird.
+* **Set Alarm Time:**
+  * *"Set bedroom alarm to 6:30 AM."*
+  * *"Wake me up tomorrow at 7:00."*
+* **Toggle Alarm State:**
+  * *"Turn off bedroom alarm."*
+  * *"Enable school alarm."*
+* **Snooze & Dismiss:**
+  * *"Snooze alarm for five minutes."* → Triggers Snooze.
+  * *"I am awake."* / *"Stop alarm."* → Triggers Dismiss.
 
-[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fvitals5%2Fha-smart-wake%2Fmain%2Fblueprints%2Fautomation%2Fsmart_wake%2Fanti_cheat_dismiss.yaml)
+---
 
-### 2. Hardware-Taster Steuerung
-Belegt beliebige Zigbee- oder Z-Wave-Taster mit Einfachklick (Snooze) und Doppelklick (Dismiss).
+## 8. Automation Blueprints
 
-[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fvitals5%2Fha-smart-wake%2Fmain%2Fblueprints%2Fautomation%2Fsmart_wake%2Fhardware_button_control.yaml)
+Smart Wake includes ready-to-use blueprints with 1-click Home Assistant import:
 
-### 3. Schlechtwetter-Frühwecker Benachrichtigung
-Sendet am Vorabend oder am Morgen eine Smartphone-Push-Benachrichtigung über vorverlegte Weckzeiten.
+### 1. Anti-Cheat Dismissal Automation
+Automatically dismisses the alarm when motion is detected in the bathroom or when the coffee machine is turned on.
 
-[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fvitals5%2Fha-smart-wake%2Fmain%2Fblueprints%2Fautomation%2Fsmart_wake%2Fweather_early_wake_notification.yaml)
+[![Import Blueprint: Anti-Cheat Dismiss](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fvitals5%2Fha-smart-wake%2Fmain%2Fblueprints%2Fautomation%2Fsmart_wake%2Fanti_cheat_dismiss.yaml)
+
+### 2. Hardware Button Control
+Maps any Zigbee or Z-Wave button to Snooze (single click) and Dismiss (double click or hold).
+
+[![Import Blueprint: Hardware Button Control](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fvitals5%2Fha-smart-wake%2Fmain%2Fblueprints%2Fautomation%2Fsmart_wake%2Fhardware_button_control.yaml)
+
+### 3. Weather Early Wake Notification
+Sends a smartphone push notification the evening before or morning of an adjusted wake time due to freezing temperatures or rain.
+
+[![Import Blueprint: Weather Early Wake Notification](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fvitals5%2Fha-smart-wake%2Fmain%2Fblueprints%2Fautomation%2Fsmart_wake%2Fweather_early_wake_notification.yaml)
 
 ---
 
 ## Installation
 
-### Option 1: HACS 1-Click Installation (Empfohlen)
+### Option 1: HACS 1-Click Installation (Recommended)
 
-Klicke einfach auf den folgenden Button, um das Smart Wake Repository direkt in deinem Home Assistant Community Store (HACS) zu öffnen und zu installieren:
+Click the button below to open Smart Wake directly in your Home Assistant Community Store (HACS):
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=vitals5&repository=ha-smart-wake&category=integration)
 
-1. Klicke in HACS auf **Herunterladen / Download**.
-2. Starte Home Assistant neu.
-3. Klicke auf den Button unten oder gehe zu **Einstellungen → Geräte & Dienste → Integration hinzufügen** und wähle **Smart Wake**:
+1. Click **Download** in HACS.
+2. Restart Home Assistant.
+3. Click the button below or navigate to **Settings → Devices & Services → Add Integration** and select **Smart Wake**:
 
-[![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=smart_wake)
+[![Add Integration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=smart_wake)
 
 ---
 
-### Option 2: Manuelle HACS-Einrichtung
-1. Öffne **HACS** in Home Assistant.
-2. Klicke oben rechts auf das Drei-Punkte-Menü `⋮` → **Benutzerdefinierte Repositories**.
-3. Füge die Repository-URL ein:
+### Option 2: Manual HACS Setup
+1. Open **HACS** in Home Assistant.
+2. Click the top-right menu `⋮` → **Custom repositories**.
+3. Enter the repository URL:
    ```text
    https://github.com/vitals5/ha-smart-wake
    ```
-4. Wähle als Kategorie **Integration**.
-5. Klicke auf **Hinzufügen**, dann auf **Herunterladen**.
-6. Starte Home Assistant neu.
+4. Select category **Integration**.
+5. Click **Add**, then **Download**.
+6. Restart Home Assistant.
 
 ---
 
-### Option 3: Manuelle Datei-Installation
-1. Lade das Release-Archiv oder das Repository herunter.
-2. Kopiere den Ordner `custom_components/smart_wake` in dein Home Assistant Verzeichnis `config/custom_components/smart_wake`.
-3. Starte Home Assistant neu.
-4. Richte deinen ersten Wecker unter **Einstellungen → Geräte & Dienste → Integration hinzufügen → Smart Wake** ein.
+### Option 3: Manual File Installation
+1. Download the latest release from GitHub.
+2. Copy the folder `custom_components/smart_wake` into your Home Assistant directory `config/custom_components/smart_wake`.
+3. Restart Home Assistant.
+4. Add your first alarm under **Settings → Devices & Services → Add Integration → Smart Wake** or via the sidebar panel.
 
 ---
 
-## Dienste (Services)
+## Services
 
-| Dienst | Parameter | Beschreibung |
+| Service | Parameters | Description |
 |---|---|---|
-| `smart_wake.start_full_test` | `alarm_id`, `start_from_pre_alarm`, `pre_alarm_seconds` | Startet einen vollständigen Echtzeit-Testlauf (Licht, Audio/TTS, Anti-Cheat, Eskalation). |
-| `smart_wake.test_alarm` | `alarm_id`, `mode`, `start_from_pre_alarm` | Startet einen Testlauf (`dry_run` für 30s Zeitraffer oder `full` für echten Test). |
-| `smart_wake.stop_test` | `alarm_id` | Bricht einen laufenden Testlauf (Zeitraffer oder Voll-Test) sofort ab. |
-| `smart_wake.snooze` | `alarm_id`, `duration` | Schlummert einen aktiven Wecker für die konfigurierte Dauer oder benutzerdefinierte Minuten. |
-| `smart_wake.dismiss` | `alarm_id` | Quittiert und beendet einen aktiven Wecker oder Vor-Alarm. |
-| `smart_wake.set_time` | `alarm_id`, `time` | Setzt eine neue Weckzeit (z. B. `"06:45"`). |
-| `smart_wake.skip_next` | `alarm_id`, `skip` | Überspringt einmalig den nächsten regulären Wecklauf. |
+| `smart_wake.start_full_test` | `alarm_id`, `start_from_pre_alarm`, `pre_alarm_seconds` | Starts an interactive real-time test run (lights, audio/TTS, Anti-Cheat, escalation). |
+| `smart_wake.test_alarm` | `alarm_id`, `mode`, `start_from_pre_alarm` | Starts a test run (`dry_run` for 30s simulation, or `full` for real-time testing). |
+| `smart_wake.stop_test` | `alarm_id` | Immediately cancels any running test run (dry-run or full test). |
+| `smart_wake.snooze` | `alarm_id`, `duration` | Snoozes an active alarm for the configured or custom duration in minutes. |
+| `smart_wake.dismiss` | `alarm_id` | Dismisses and ends an active alarm or pre-alarm. |
+| `smart_wake.set_time` | `alarm_id`, `time` | Sets a new alarm time (e.g., `"06:45"`). |
+| `smart_wake.skip_next` | `alarm_id`, `skip` | Skips the next scheduled alarm cycle once without altering the recurring schedule. |
 
 ---
 
-## Lizenz
+## License
 
-Dieses Projekt ist unter der [MIT-Lizenz](LICENSE) lizenziert. Copyright (c) 2026 VitalS5.
+This project is licensed under the [MIT License](LICENSE). Copyright (c) 2026 VitalS5.
