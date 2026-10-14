@@ -1,0 +1,179 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Smart Wake - Новый будильник",
+        "description": "Создайте новый экземпляр умного будильника (например: Будильник в спальне, Детская, Кабинет).",
+        "data": {
+          "name": "Название будильника",
+          "time": "Время будильника (ЧЧ:ММ)",
+          "enabled": "Включить будильник сразу",
+          "days": "Активные дни недели"
+        }
+      }
+    },
+    "error": {
+      "invalid_name": "Пожалуйста, введите корректное название.",
+      "already_configured": "Будильник с таким названием уже существует."
+    },
+    "abort": {
+      "already_configured": "Этот будильник уже настроен."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Настройки Smart Wake",
+        "description": "Выберите раздел для настройки будильника:",
+        "menu_options": {
+          "schedule": "⏰ Расписание, рабочие дни и календарь",
+          "conditions": "👥 Присутствие, погода и трекер сна",
+          "phase1_pre_alarm": "🌅 Фаза 1: Пред-будильник (Мягкое пробуждение)",
+          "phase2_main_alarm": "🔔 Фаза 2: Основной будильник (Аудио и TTS)",
+          "phase3_escalation": "⚡ Фаза 3: Эскалация (Защита от просыпания)",
+          "snooze_dismiss": "🛑 Отключение, откладывание и защита от читерства"
+        }
+      },
+      "schedule": {
+        "title": "Расписание и календарь",
+        "data": {
+          "time": "Время будильника (ЧЧ:ММ)",
+          "days": "Дни недели",
+          "workday_entity": "Сенсор рабочих дней (опционально)",
+          "workday_only": "Срабатывать только по рабочим дням",
+          "calendar_entity": "Календарь (опционально)",
+          "calendar_behavior": "Режим фильтрации календаря"
+        }
+      },
+      "conditions": {
+        "title": "Присутствие и динамические триггеры",
+        "data": {
+          "person_entities": "Назначенные пользователи (person.*)",
+          "person_home_required": "Срабатывать только когда пользователь дома",
+          "weather_temp_entity": "Датчик уличной температуры",
+          "weather_temp_threshold": "Порог заморозков (°C)",
+          "weather_temp_offset": "Ранний подъём при морозе (минут раньше)",
+          "weather_rain_entity": "Датчик дождя / осадков",
+          "weather_rain_offset": "Ранний подъём при дожде (минут раньше)",
+          "sleep_stage_entity": "Датчик фаз сна",
+          "sleep_stage_window": "Окно лёгкого сна (минут до будильника)"
+        }
+      },
+      "phase1_pre_alarm": {
+        "title": "Фаза 1: Пред-будильник (Мягкое пробуждение)",
+        "data": {
+          "pre_alarm_enabled": "Включить пред-будильник",
+          "pre_alarm_duration": "Длительность пред-будильника (минут)",
+          "pre_alarm_light_entities": "Свет для пробуждения (light.*)",
+          "pre_alarm_light_start_brightness": "Начальная яркость света (%)",
+          "pre_alarm_light_end_brightness": "Целевая яркость света (%)",
+          "pre_alarm_cover_entities": "Жалюзи / шторы (cover.*)",
+          "pre_alarm_cover_position": "Приоткрыть жалюзи до (%)",
+          "pre_alarm_script_entity": "Скрипт пред-будильника (script.*)"
+        }
+      },
+      "phase2_main_alarm": {
+        "title": "Фаза 2: Основной будильник",
+        "data": {
+          "main_media_player_entities": "Устройства воспроизведения (media_player.*)",
+          "main_tts_media_player": "Отдельный плеер для TTS (опционально)",
+          "main_audio_content_id": "URL аудиопотока / плейлиста / сигнал",
+          "main_audio_fade_in": "Плавное нарастание громкости",
+          "main_audio_fade_duration": "Длительность нарастания (секунд)",
+          "main_audio_target_volume": "Целевая громкость музыки (0.1 - 1.0)",
+          "main_tts_enabled": "Включить голосовое утреннее приветствие TTS",
+          "main_tts_delay": "Задержка TTS (секунд после старта музыки)",
+          "main_tts_volume": "Громкость TTS (0.05 - 1.0)",
+          "main_tts_message": "Шаблон TTS ({time}, {temp}, {name})",
+          "main_script_entity": "Пользовательский скрипт (script.*)"
+        }
+      },
+      "phase3_escalation": {
+        "title": "Фаза 3: Режим эскалации",
+        "data": {
+          "escalation_enabled": "Включить эскалацию",
+          "escalation_delay": "Задержка после основного будильника (минут)",
+          "escalation_volume": "Громкость эскалации (например, 0.9 = 90%)",
+          "escalation_volume_fade_duration": "Длительность нарастания громкости (секунд)",
+          "escalation_light_entities": "Основной свет комнаты (light.*)",
+          "escalation_light_brightness": "Яркость эскалации (%)",
+          "escalation_cover_entities": "Шторы / жалюзи (cover.*)",
+          "escalation_cover_position": "Открыть шторы полностью на (%)",
+          "escalation_script_entity": "Скрипт эскалации (script.*)"
+        }
+      },
+      "snooze_dismiss": {
+        "title": "Отключение, откладывание и защита от читерства",
+        "data": {
+          "snooze_duration": "Длительность откладывания (минут)",
+          "max_snooze_count": "Максимальное количество откладываний",
+          "dismiss_button_entity": "Физическая кнопка отключения",
+          "dismiss_button_event": "Тип события кнопки отключения (например: hold)",
+          "snooze_button_entity": "Физическая кнопка откладывания",
+          "snooze_button_event": "Тип события кнопки откладывания (например: single)",
+          "dismiss_motion_entities": "Датчики движения (ванная / кухня)",
+          "dismiss_power_sensor": "Датчик мощности прибора",
+          "dismiss_power_threshold": "Порог мощности для отключения (Вт)",
+          "dismiss_input_boolean": "Вспомогательный переключатель (input_boolean.*)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "time": {
+      "time": {
+        "name": "Время будильника"
+      }
+    },
+    "switch": {
+      "enabled": {
+        "name": "Включён"
+      }
+    },
+    "sensor": {
+      "status": {
+        "name": "Статус"
+      },
+      "next_alarm": {
+        "name": "Следующий будильник"
+      },
+      "active_phase": {
+        "name": "Активная фаза"
+      },
+      "snooze_count": {
+        "name": "Счётчик откладываний"
+      },
+      "dynamic_offset": {
+        "name": "Погодное смещение"
+      }
+    },
+    "button": {
+      "snooze": {
+        "name": "Отложить"
+      },
+      "dismiss": {
+        "name": "Отключить"
+      },
+      "test": {
+        "name": "Тест (30с демо)"
+      },
+      "full_test": {
+        "name": "Полный тест"
+      },
+      "skip_next": {
+        "name": "Пропустить следующий"
+      }
+    },
+    "number": {
+      "snooze_duration": {
+        "name": "Длительность откладывания"
+      },
+      "max_snooze_count": {
+        "name": "Макс. количество откладываний"
+      },
+      "pre_alarm_duration": {
+        "name": "Длительность пред-будильника"
+      }
+    }
+  }
+}

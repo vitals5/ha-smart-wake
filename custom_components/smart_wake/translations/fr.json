@@ -1,0 +1,179 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Smart Wake - Nouveau réveil",
+        "description": "Créer une nouvelle instance de réveil intelligent (ex. Réveil chambre, Chambre enfants, Bureau).",
+        "data": {
+          "name": "Nom du réveil",
+          "time": "Heure du réveil (HH:MM)",
+          "enabled": "Activer le réveil immédiatement",
+          "days": "Jours actifs"
+        }
+      }
+    },
+    "error": {
+      "invalid_name": "Veuillez fournir un nom de réveil valide.",
+      "already_configured": "Un réveil avec ce nom existe déjà."
+    },
+    "abort": {
+      "already_configured": "Ce réveil est déjà configuré."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options Smart Wake",
+        "description": "Sélectionnez une catégorie pour configurer votre réveil :",
+        "menu_options": {
+          "schedule": "⏰ Horaires, jours ouvrés et calendrier",
+          "conditions": "👥 Présence, météo et suivi du sommeil",
+          "phase1_pre_alarm": "🌅 Phase 1 : Pré-alarme (Réveil en douceur)",
+          "phase2_main_alarm": "🔔 Phase 2 : Alarme principale (Audio et TTS)",
+          "phase3_escalation": "⚡ Phase 3 : Escalade (Anti-sommeil)",
+          "snooze_dismiss": "🛑 Arrêt, répétition et anti-triche"
+        }
+      },
+      "schedule": {
+        "title": "Horaires et calendrier",
+        "data": {
+          "time": "Heure cible (HH:MM)",
+          "days": "Jours actifs",
+          "workday_entity": "Capteur de jours ouvrés (optionnel)",
+          "workday_only": "Déclencher uniquement les jours ouvrés",
+          "calendar_entity": "Calendrier (optionnel)",
+          "calendar_behavior": "Mode de filtrage du calendrier"
+        }
+      },
+      "conditions": {
+        "title": "Présence et déclencheurs dynamiques",
+        "data": {
+          "person_entities": "Personnes assignées (person.*)",
+          "person_home_required": "Déclencher uniquement si la personne est à la maison",
+          "weather_temp_entity": "Capteur de température extérieure",
+          "weather_temp_threshold": "Seuil de gel (°C)",
+          "weather_temp_offset": "Décalage givre (minutes plus tôt)",
+          "weather_rain_entity": "Capteur de pluie",
+          "weather_rain_offset": "Décalage pluie (minutes plus tôt)",
+          "sleep_stage_entity": "Capteur de phases de sommeil",
+          "sleep_stage_window": "Fenêtre de sommeil léger (minutes avant l'alarme)"
+        }
+      },
+      "phase1_pre_alarm": {
+        "title": "Phase 1 : Pré-alarme (Réveil en douceur)",
+        "data": {
+          "pre_alarm_enabled": "Activer la phase de pré-alarme",
+          "pre_alarm_duration": "Durée avant l'alarme (minutes)",
+          "pre_alarm_light_entities": "Lumières de réveil (light.*)",
+          "pre_alarm_light_start_brightness": "Luminosité initiale (%)",
+          "pre_alarm_light_end_brightness": "Luminosité cible (%)",
+          "pre_alarm_cover_entities": "Volets / Stores (cover.*)",
+          "pre_alarm_cover_position": "Ouvrir les volets à (%)",
+          "pre_alarm_script_entity": "Script personnalisé (script.*)"
+        }
+      },
+      "phase2_main_alarm": {
+        "title": "Phase 2 : Alarme principale",
+        "data": {
+          "main_media_player_entities": "Lecteurs multimédias (media_player.*)",
+          "main_tts_media_player": "Lecteur dédié pour TTS (optionnel)",
+          "main_audio_content_id": "Flux audio / URL playlist / sonnerie",
+          "main_audio_fade_in": "Activer le fondu audio progressif",
+          "main_audio_fade_duration": "Durée du fondu (secondes)",
+          "main_audio_target_volume": "Volume cible de la musique (0.1 - 1.0)",
+          "main_tts_enabled": "Activer le briefing matinal TTS",
+          "main_tts_delay": "Délai TTS (secondes après le début de la musique)",
+          "main_tts_volume": "Volume TTS (0.05 - 1.0)",
+          "main_tts_message": "Modèle TTS ({time}, {temp}, {name})",
+          "main_script_entity": "Script personnalisé (script.*)"
+        }
+      },
+      "phase3_escalation": {
+        "title": "Phase 3 : Mode escalade",
+        "data": {
+          "escalation_enabled": "Activer l'escalade anti-sommeil",
+          "escalation_delay": "Délai après l'alarme principale (minutes)",
+          "escalation_volume": "Volume d'escalade (ex. 0.9 = 90%)",
+          "escalation_volume_fade_duration": "Durée de montée du volume (secondes)",
+          "escalation_light_entities": "Lumières principales (light.*)",
+          "escalation_light_brightness": "Luminosité d'escalade (%)",
+          "escalation_cover_entities": "Volets (cover.*)",
+          "escalation_cover_position": "Ouvrir les volets à (%)",
+          "escalation_script_entity": "Script d'escalade (script.*)"
+        }
+      },
+      "snooze_dismiss": {
+        "title": "Arrêt, répétition et anti-triche",
+        "data": {
+          "snooze_duration": "Durée de répétition (minutes)",
+          "max_snooze_count": "Nombre maximum de répétitions",
+          "dismiss_button_entity": "Bouton physique d'arrêt",
+          "dismiss_button_event": "Type d'événement d'arrêt (ex. hold)",
+          "snooze_button_entity": "Bouton physique de répétition",
+          "snooze_button_event": "Type d'événement de répétition (ex. single)",
+          "dismiss_motion_entities": "Détecteurs de mouvement (salle de bain/cuisine)",
+          "dismiss_power_sensor": "Capteur de puissance d'appareil",
+          "dismiss_power_threshold": "Seuil de puissance pour arrêter (Watts)",
+          "dismiss_input_boolean": "Interrupteur d'aide anti-triche (input_boolean.*)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "time": {
+      "time": {
+        "name": "Heure du réveil"
+      }
+    },
+    "switch": {
+      "enabled": {
+        "name": "Activé"
+      }
+    },
+    "sensor": {
+      "status": {
+        "name": "Statut"
+      },
+      "next_alarm": {
+        "name": "Prochain réveil"
+      },
+      "active_phase": {
+        "name": "Phase active"
+      },
+      "snooze_count": {
+        "name": "Compteur de répétitions"
+      },
+      "dynamic_offset": {
+        "name": "Décalage météo"
+      }
+    },
+    "button": {
+      "snooze": {
+        "name": "Répéter"
+      },
+      "dismiss": {
+        "name": "Arrêter"
+      },
+      "test": {
+        "name": "Test (démo 30s)"
+      },
+      "full_test": {
+        "name": "Test complet"
+      },
+      "skip_next": {
+        "name": "Passer le prochain"
+      }
+    },
+    "number": {
+      "snooze_duration": {
+        "name": "Durée de répétition"
+      },
+      "max_snooze_count": {
+        "name": "Répétitions max"
+      },
+      "pre_alarm_duration": {
+        "name": "Durée pré-alarme"
+      }
+    }
+  }
+}

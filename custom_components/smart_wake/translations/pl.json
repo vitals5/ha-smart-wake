@@ -1,0 +1,179 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Smart Wake - Nowy budzik",
+        "description": "Utwórz nową instancję inteligentnego budzika (np. Budzik sypialnia, Pokój dziecięcy, Biuro).",
+        "data": {
+          "name": "Nazwa budzika",
+          "time": "Godzina budzenia (GG:MM)",
+          "enabled": "Włącz budzik natychmiast",
+          "days": "Aktywne dni tygodnia"
+        }
+      }
+    },
+    "error": {
+      "invalid_name": "Proszę podać prawidłową nazwę budzika.",
+      "already_configured": "Budzik o tej nazwie już istnieje."
+    },
+    "abort": {
+      "already_configured": "Ten budzik jest już skonfigurowany."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Ustawienia Smart Wake",
+        "description": "Wybierz kategorię, aby skonfigurować swój inteligentny budzik:",
+        "menu_options": {
+          "schedule": "⏰ Harmonogram, dni robocze i kalendarz",
+          "conditions": "👥 Obecność, pogoda i monitor snu",
+          "phase1_pre_alarm": "🌅 Faza 1: Przed-alarm (Łagodne budzenie)",
+          "phase2_main_alarm": "🔔 Faza 2: Alarm główny (Dźwięk i TTS)",
+          "phase3_escalation": "⚡ Faza 3: Eskalacja (Ochrona przed zaspaniem)",
+          "snooze_dismiss": "🛑 Wyłączanie, drzemka i anty-oszustwo"
+        }
+      },
+      "schedule": {
+        "title": "Harmonogram i kalendarz",
+        "data": {
+          "time": "Godzina docelowa (GG:MM)",
+          "days": "Aktywne dni",
+          "workday_entity": "Sensor dni roboczych (opcjonalnie)",
+          "workday_only": "Uruchamiaj tylko w dni robocze",
+          "calendar_entity": "Encja kalendarza (opcjonalnie)",
+          "calendar_behavior": "Tryb filtrowania kalendarza"
+        }
+      },
+      "conditions": {
+        "title": "Obecność i wyzwalacze dynamiczne",
+        "data": {
+          "person_entities": "Przypisane osoby (person.*)",
+          "person_home_required": "Uruchamiaj tylko, gdy przypisana osoba jest w domu",
+          "weather_temp_entity": "Czujnik temperatury zewnętrznej",
+          "weather_temp_threshold": "Próg temperatury przymrozku (°C)",
+          "weather_temp_offset": "Wcześniejsze budzenie przy mrozie (minuty)",
+          "weather_rain_entity": "Czujnik deszczu / opadów",
+          "weather_rain_offset": "Wcześniejsze budzenie przy deszczu (minuty)",
+          "sleep_stage_entity": "Czujnik faz snu",
+          "sleep_stage_window": "Okno budzenia w płytkim śnie (minuty przed alarmem)"
+        }
+      },
+      "phase1_pre_alarm": {
+        "title": "Faza 1: Przed-alarm (Łagodne budzenie)",
+        "data": {
+          "pre_alarm_enabled": "Włącz fazę przed-alarmu",
+          "pre_alarm_duration": "Czas przed alarmem (minuty)",
+          "pre_alarm_light_entities": "Światła budzące (light.*)",
+          "pre_alarm_light_start_brightness": "Początkowa jasność światła (%)",
+          "pre_alarm_light_end_brightness": "Docelowa jasność światła (%)",
+          "pre_alarm_cover_entities": "Rolety / Żaluzje (cover.*)",
+          "pre_alarm_cover_position": "Otwórz rolety do (%)",
+          "pre_alarm_script_entity": "Niestandardowy skrypt przed-alarmu (script.*)"
+        }
+      },
+      "phase2_main_alarm": {
+        "title": "Faza 2: Alarm główny",
+        "data": {
+          "main_media_player_entities": "Odtwarzacze multimedialne (media_player.*)",
+          "main_tts_media_player": "Dedykowany odtwarzacz dla TTS (opcjonalnie)",
+          "main_audio_content_id": "URL strumienia audio / listy odtwarzania / dzwonek",
+          "main_audio_fade_in": "Włącz płynne narastanie głośności",
+          "main_audio_fade_duration": "Czas narastania głośności (sekundy)",
+          "main_audio_target_volume": "Docelowa głośność muzyki (0.1 - 1.0)",
+          "main_tts_enabled": "Włącz poranny komunikat głosowy TTS",
+          "main_tts_delay": "Opóźnienie TTS (sekundy po rozpoczęciu muzyki)",
+          "main_tts_volume": "Głośność TTS (0.05 - 1.0)",
+          "main_tts_message": "Szablon TTS ({time}, {temp}, {name})",
+          "main_script_entity": "Niestandardowy skrypt (script.*)"
+        }
+      },
+      "phase3_escalation": {
+        "title": "Faza 3: Tryb eskalacji",
+        "data": {
+          "escalation_enabled": "Włącz eskalację zapobiegającą zaspaniu",
+          "escalation_delay": "Opóźnienie po alarmie głównym (minuty)",
+          "escalation_volume": "Głośność eskalacji (np. 0.9 = 90%)",
+          "escalation_volume_fade_duration": "Czas narastania głośności (sekundy)",
+          "escalation_light_entities": "Główne oświetlenie pokoju (light.*)",
+          "escalation_light_brightness": "Jasność eskalacji (%)",
+          "escalation_cover_entities": "Rolety (cover.*)",
+          "escalation_cover_position": "Otwórz rolety całkowicie do (%)",
+          "escalation_script_entity": "Skrypt eskalacji (script.*)"
+        }
+      },
+      "snooze_dismiss": {
+        "title": "Wyłączanie, drzemka i anty-oszustwo",
+        "data": {
+          "snooze_duration": "Czas trwania drzemki (minuty)",
+          "max_snooze_count": "Maksymalna liczba drzemek",
+          "dismiss_button_entity": "Fizyczny przycisk wyłączania",
+          "dismiss_button_event": "Typ zdarzenia przycisku wyłączania (np. hold)",
+          "snooze_button_entity": "Fizyczny przycisk drzemki",
+          "snooze_button_event": "Typ zdarzenia przycisku drzemki (np. single)",
+          "dismiss_motion_entities": "Czujniki ruchu anty-oszustwo (łazienka/kuchnia)",
+          "dismiss_power_sensor": "Czujnik poboru mocy urządzenia",
+          "dismiss_power_threshold": "Próg mocy do wyłączenia (Waty)",
+          "dismiss_input_boolean": "Pomocniczy przełącznik anty-oszustwo (input_boolean.*)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "time": {
+      "time": {
+        "name": "Godzina budzika"
+      }
+    },
+    "switch": {
+      "enabled": {
+        "name": "Włączony"
+      }
+    },
+    "sensor": {
+      "status": {
+        "name": "Status"
+      },
+      "next_alarm": {
+        "name": "Następny alarm"
+      },
+      "active_phase": {
+        "name": "Aktywna faza"
+      },
+      "snooze_count": {
+        "name": "Licznik drzemek"
+      },
+      "dynamic_offset": {
+        "name": "Dynamiczne przesunięcie pogodowe"
+      }
+    },
+    "button": {
+      "snooze": {
+        "name": "Drzemka"
+      },
+      "dismiss": {
+        "name": "Wyłącz"
+      },
+      "test": {
+        "name": "Test budzika (szybkie demo)"
+      },
+      "full_test": {
+        "name": "Pełny test budzika"
+      },
+      "skip_next": {
+        "name": "Pomiń następny alarm"
+      }
+    },
+    "number": {
+      "snooze_duration": {
+        "name": "Czas drzemki"
+      },
+      "max_snooze_count": {
+        "name": "Maks. liczba drzemek"
+      },
+      "pre_alarm_duration": {
+        "name": "Czas przed-alarmu"
+      }
+    }
+  }
+}

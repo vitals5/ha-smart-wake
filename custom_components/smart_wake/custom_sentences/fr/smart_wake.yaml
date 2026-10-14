@@ -1,0 +1,64 @@
+language: "fr"
+intents:
+  SmartWakeSetTime:
+    data:
+      - sentences:
+          - "règle [le] [réveil] [dans] [la] {alarm} à {time} [heures|h]"
+          - "règle le réveil à {time} [heures|h]"
+          - "mets [le] [réveil] [dans] [la] {alarm} à {time} [heures|h]"
+          - "mets le réveil à {time} [heures|h]"
+          - "réveille-moi demain à {time} [heures|h]"
+          - "réveille-moi à {time} [heures|h]"
+          - "change [l'heure] [du] [réveil] [dans] [la] {alarm} à {time} [heures|h]"
+          - "change le réveil à {time} [heures|h]"
+
+  SmartWakeSetStatus:
+    data:
+      - sentences:
+          - "active [le] [réveil] [dans] [la] {alarm}"
+          - "active le réveil"
+          - "allume [le] [réveil] [dans] [la] {alarm}"
+          - "allume le réveil"
+        slots:
+          status: "on"
+      - sentences:
+          - "désactive [le] [réveil] [dans] [la] {alarm}"
+          - "désactive le réveil"
+          - "éteins [le] [réveil] [dans] [la] {alarm}"
+          - "éteins le réveil"
+          - "désactive le réveil pour demain"
+        slots:
+          status: "off"
+
+  SmartWakeSnooze:
+    data:
+      - sentences:
+          - "répète [le] [réveil]"
+          - "répéter"
+          - "encore {duration} minutes de sommeil"
+          - "encore cinq minutes de sommeil"
+          - "encore dix minutes de sommeil"
+          - "laisse-moi dormir encore {duration} minutes"
+          - "laisse-moi dormir encore un peu"
+          - "snooze"
+
+  SmartWakeDismiss:
+    data:
+      - sentences:
+          - "je suis réveillé"
+          - "je suis debout"
+          - "arrête [le] réveil"
+          - "arrête [le] [réveil] [dans] [la] {alarm}"
+          - "éteins l'alarme"
+          - "arrête l'alarme"
+          - "stop"
+
+lists:
+  alarm:
+    wildcard: true
+  time:
+    wildcard: true
+  duration:
+    range:
+      from: 1
+      to: 60

@@ -76,12 +76,14 @@
         "title": "Phase 2: Hauptalarm",
         "data": {
           "main_media_player_entities": "Audio-Wiedergabegeräte (media_player.*)",
+          "main_tts_media_player": "Separater Player für TTS (optional)",
           "main_audio_content_id": "Audio Stream / Playlist URL / Chime",
           "main_audio_fade_in": "Sanfter Audio-Fade-in aktivieren",
           "main_audio_fade_duration": "Fade-in Dauer (Sekunden)",
           "main_audio_target_volume": "Ziel-Lautstärke (0.1 - 1.0)",
           "main_tts_enabled": "TTS-Morgenbriefing aktivieren",
-          "main_tts_delay": "TTS-Verzögerung (Sekunden vor Ansage)",
+          "main_tts_delay": "TTS-Verzögerung (Sekunden nach Musikstart)",
+          "main_tts_volume": "TTS-Lautstärke (0.05 - 1.0)",
           "main_tts_message": "TTS-Vorlage ({time}, {temp}, {name})",
           "main_script_entity": "HA-Skript ausführen (script.*)"
         }
@@ -105,8 +107,10 @@
         "data": {
           "snooze_duration": "Schlummerdauer (Minuten)",
           "max_snooze_count": "Maximale Anzahl an Schlummer-Vorgängen",
-          "dismiss_button_entity": "Hardware Quittiertaster (Doppelklick = Dismiss)",
-          "snooze_button_entity": "Hardware Schlummertaster (Klick = Snooze)",
+          "dismiss_button_entity": "Hardware Quittiertaster",
+          "dismiss_button_event": "Event-Typ Quittiertaste (z.B. hold)",
+          "snooze_button_entity": "Hardware Schlummertaster",
+          "snooze_button_event": "Event-Typ Schlummertaste (z.B. single)",
           "dismiss_motion_entities": "Anti-Cheat Präsenzmelder (Bad / Küche)",
           "dismiss_power_sensor": "Anti-Cheat Leistungssensor (Kaffeemaschine / Badlicht)",
           "dismiss_power_threshold": "Leistungsschwelle zum Beenden (Watt)",

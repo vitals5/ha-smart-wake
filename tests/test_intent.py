@@ -133,6 +133,55 @@ class TestSmartWakeIntents(unittest.IsolatedAsyncioTestCase):
         res_dismiss = await dismiss_handler.async_handle(intent_dismiss)
         self.assertIn("Доброе утро!", res_dismiss.speech)
 
+    async def test_multilingual_intents_all_languages(self) -> None:
+        """Test intent handlers across French, Spanish, Italian, Dutch, Polish, Portuguese."""
+        time_handler = SmartWakeSetTimeHandler()
+        status_handler = SmartWakeSetStatusHandler()
+        snooze_handler = SmartWakeSnoozeHandler()
+        dismiss_handler = SmartWakeDismissHandler()
+
+        # French: "chambre" -> "Schlafzimmer"
+        res_fr = await time_handler.async_handle(
+            MockIntentObj(self.hass, {"time": {"value": "huit heures"}, "alarm": {"value": "chambre"}}, language="fr")
+        )
+        self.assertEqual(self.alarm.time_str, "08:00")
+        self.assertIn("a été réglé à 08:00", res_fr.speech)
+
+        # Spanish: "dormitorio" -> "Schlafzimmer"
+        res_es = await status_handler.async_handle(
+            MockIntentObj(self.hass, {"status": {"value": "desactivar"}, "alarm": {"value": "dormitorio"}}, language="es")
+        )
+        self.assertFalse(self.alarm.enabled)
+        self.assertIn("desactivado", res_es.speech)
+
+        # Italian: "camera da letto" -> "Schlafzimmer"
+        self.alarm._status = STATUS_RINGING
+        res_it = await snooze_handler.async_handle(
+            MockIntentObj(self.hass, {"alarm": {"value": "camera da letto"}, "duration": {"value": 8}}, language="it")
+        )
+        self.assertIn("altri 8 minuti", res_it.speech)
+
+        # Dutch: "slaapkamer" -> "Schlafzimmer"
+        self.alarm._status = STATUS_RINGING
+        res_nl = await dismiss_handler.async_handle(
+            MockIntentObj(self.hass, {"alarm": {"value": "slaapkamer"}}, language="nl")
+        )
+        self.assertIn("Goedemorgen", res_nl.speech)
+
+        # Polish: "sypialnia" -> "Schlafzimmer"
+        res_pl = await time_handler.async_handle(
+            MockIntentObj(self.hass, {"time": {"value": "siódma"}, "alarm": {"value": "sypialnia"}}, language="pl")
+        )
+        self.assertEqual(self.alarm.time_str, "07:00")
+        self.assertIn("ustawiony na 07:00", res_pl.speech)
+
+        # Portuguese: "quarto" -> "Schlafzimmer"
+        res_pt = await status_handler.async_handle(
+            MockIntentObj(self.hass, {"status": {"value": "desligar"}, "alarm": {"value": "quarto"}}, language="pt")
+        )
+        self.assertFalse(self.alarm.enabled)
+        self.assertIn("desativado", res_pt.speech)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,59 @@
+language: "pt"
+intents:
+  SmartWakeSetTime:
+    data:
+      - sentences:
+          - "define [o] [despertador] [no|na] {alarm} para as {time}"
+          - "define o despertador para as {time}"
+          - "acorda-me amanhã às {time}"
+          - "acorda-me às {time}"
+          - "muda [o] [despertador] [no|na] {alarm} para as {time}"
+          - "muda o despertador para as {time}"
+
+  SmartWakeSetStatus:
+    data:
+      - sentences:
+          - "ativa [o] [despertador] [no|na] {alarm}"
+          - "ativa o despertador"
+          - "liga [o] [despertador] [no|na] {alarm}"
+          - "liga o despertador"
+        slots:
+          status: "on"
+      - sentences:
+          - "desativa [o] [despertador] [no|na] {alarm}"
+          - "desativa o despertador"
+          - "desliga [o] [despertador] [no|na] {alarm}"
+          - "desliga o despertador"
+          - "desliga o despertador para amanhã"
+        slots:
+          status: "off"
+
+  SmartWakeSnooze:
+    data:
+      - sentences:
+          - "adia [o] despertador"
+          - "adiar"
+          - "deixa-me dormir mais {duration} minutos"
+          - "deixa-me dormir mais cinco minutos"
+          - "deixa-me dormir mais dez minutos"
+          - "snooze"
+
+  SmartWakeDismiss:
+    data:
+      - sentences:
+          - "já acordei"
+          - "já estou acordado"
+          - "para o despertador"
+          - "para [o] [despertador] [no|na] {alarm}"
+          - "desliga o alarme"
+          - "stop"
+
+lists:
+  alarm:
+    wildcard: true
+  time:
+    wildcard: true
+  duration:
+    range:
+      from: 1
+      to: 60

@@ -1,0 +1,179 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Smart Wake - Nuova sveglia",
+        "description": "Crea una nuova istanza di sveglia intelligente (es. Sveglia camera da letto, Stanza dei bambini, Ufficio).",
+        "data": {
+          "name": "Nome sveglia",
+          "time": "Ora della sveglia (HH:MM)",
+          "enabled": "Attiva sveglia immediatamente",
+          "days": "Giorni attivi della settimana"
+        }
+      }
+    },
+    "error": {
+      "invalid_name": "Inserire un nome valido per la sveglia.",
+      "already_configured": "Una sveglia con questo nome esiste già."
+    },
+    "abort": {
+      "already_configured": "Questa sveglia è già configurata."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opzioni Smart Wake",
+        "description": "Seleziona una categoria per configurare la tua sveglia:",
+        "menu_options": {
+          "schedule": "⏰ Orari, giorni lavorativi e calendario",
+          "conditions": "👥 Presenza, meteo e monitoraggio del sonno",
+          "phase1_pre_alarm": "🌅 Fase 1: Pre-allarme (Risveglio dolce)",
+          "phase2_main_alarm": "🔔 Fase 2: Sveglia principale (Audio e TTS)",
+          "phase3_escalation": "⚡ Fase 3: Escalation (Anti-sonno prolungato)",
+          "snooze_dismiss": "🛑 Spegnimento, rinvio e anti-inganno"
+        }
+      },
+      "schedule": {
+        "title": "Orari e calendario",
+        "data": {
+          "time": "Ora target (HH:MM)",
+          "days": "Giorni attivi",
+          "workday_entity": "Sensore giorni lavorativi (opzionale)",
+          "workday_only": "Attiva solo nei giorni lavorativi",
+          "calendar_entity": "Entità calendario (opzionale)",
+          "calendar_behavior": "Modalità filtro calendario"
+        }
+      },
+      "conditions": {
+        "title": "Presenza e trigger dinamici",
+        "data": {
+          "person_entities": "Persone assegnate (person.*)",
+          "person_home_required": "Attiva solo se la persona assegnata è a casa",
+          "weather_temp_entity": "Sensore temperatura esterna",
+          "weather_temp_threshold": "Soglia temperatura gelo (°C)",
+          "weather_temp_offset": "Anticipo sveglia per gelo (minuti)",
+          "weather_rain_entity": "Sensore pioggia / precipitazioni",
+          "weather_rain_offset": "Anticipo sveglia per pioggia (minuti)",
+          "sleep_stage_entity": "Sensore fasi del sonno",
+          "sleep_stage_window": "Finestra di sonno leggero (minuti prima della sveglia)"
+        }
+      },
+      "phase1_pre_alarm": {
+        "title": "Fase 1: Pre-allarme (Risveglio dolce)",
+        "data": {
+          "pre_alarm_enabled": "Abilita fase di pre-allarme",
+          "pre_alarm_duration": "Durata prima della sveglia (minuti)",
+          "pre_alarm_light_entities": "Luci di risveglio (light.*)",
+          "pre_alarm_light_start_brightness": "Luminosità iniziale luce (%)",
+          "pre_alarm_light_end_brightness": "Luminosità finale luce (%)",
+          "pre_alarm_cover_entities": "Tapparelle / Veneziane (cover.*)",
+          "pre_alarm_cover_position": "Apri tapparelle a (%)",
+          "pre_alarm_script_entity": "Script personalizzato pre-allarme (script.*)"
+        }
+      },
+      "phase2_main_alarm": {
+        "title": "Fase 2: Sveglia principale",
+        "data": {
+          "main_media_player_entities": "Dispositivi di riproduzione (media_player.*)",
+          "main_tts_media_player": "Lettore dedicato per TTS (opzionale)",
+          "main_audio_content_id": "URL stream audio / playlist / suoneria",
+          "main_audio_fade_in": "Abilita dissolvenza audio (fade-in)",
+          "main_audio_fade_duration": "Durata dissolvenza (secondi)",
+          "main_audio_target_volume": "Volume target musica (0.1 - 1.0)",
+          "main_tts_enabled": "Abilita briefing mattutino TTS",
+          "main_tts_delay": "Ritardo TTS (secondi dopo l'avvio della musica)",
+          "main_tts_volume": "Volume TTS (0.05 - 1.0)",
+          "main_tts_message": "Modello TTS ({time}, {temp}, {name})",
+          "main_script_entity": "Script personalizzato (script.*)"
+        }
+      },
+      "phase3_escalation": {
+        "title": "Fase 3: Modalità escalation",
+        "data": {
+          "escalation_enabled": "Abilita escalation anti-sonno",
+          "escalation_delay": "Ritardo dopo la sveglia principale (minuti)",
+          "escalation_volume": "Volume di escalation (es. 0.9 = 90%)",
+          "escalation_volume_fade_duration": "Durata aumento volume (secondi)",
+          "escalation_light_entities": "Luci principali stanza (light.*)",
+          "escalation_light_brightness": "Luminosità escalation (%)",
+          "escalation_cover_entities": "Tapparelle (cover.*)",
+          "escalation_cover_position": "Apri tapparelle completamente al (%)",
+          "escalation_script_entity": "Script escalation (script.*)"
+        }
+      },
+      "snooze_dismiss": {
+        "title": "Spegnimento, rinvio e anti-inganno",
+        "data": {
+          "snooze_duration": "Durata rinvio (minuti)",
+          "max_snooze_count": "Numero massimo di rinvii",
+          "dismiss_button_entity": "Pulsante hardware di spegnimento",
+          "dismiss_button_event": "Tipo di evento pulsante spegnimento (es. hold)",
+          "snooze_button_entity": "Pulsante hardware di rinvio",
+          "snooze_button_event": "Tipo di evento pulsante rinvio (es. single)",
+          "dismiss_motion_entities": "Sensori di movimento anti-inganno (bagno/cucina)",
+          "dismiss_power_sensor": "Sensore potenza elettrodomestico",
+          "dismiss_power_threshold": "Soglia di potenza per spegnere (Watt)",
+          "dismiss_input_boolean": "Interruttore ausiliario anti-inganno (input_boolean.*)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "time": {
+      "time": {
+        "name": "Ora sveglia"
+      }
+    },
+    "switch": {
+      "enabled": {
+        "name": "Abilitato"
+      }
+    },
+    "sensor": {
+      "status": {
+        "name": "Stato"
+      },
+      "next_alarm": {
+        "name": "Prossima sveglia"
+      },
+      "active_phase": {
+        "name": "Fase attiva"
+      },
+      "snooze_count": {
+        "name": "Conteggio rinvii"
+      },
+      "dynamic_offset": {
+        "name": "Compensazione meteo dinamica"
+      }
+    },
+    "button": {
+      "snooze": {
+        "name": "Posponi"
+      },
+      "dismiss": {
+        "name": "Spegni"
+      },
+      "test": {
+        "name": "Prova sveglia (demo rapida)"
+      },
+      "full_test": {
+        "name": "Prova completa sveglia"
+      },
+      "skip_next": {
+        "name": "Salta prossima sveglia"
+      }
+    },
+    "number": {
+      "snooze_duration": {
+        "name": "Durata rinvio"
+      },
+      "max_snooze_count": {
+        "name": "Numero max rinvii"
+      },
+      "pre_alarm_duration": {
+        "name": "Durata pre-allarme"
+      }
+    }
+  }
+}

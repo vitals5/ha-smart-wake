@@ -71,10 +71,9 @@ class TestSmartWakeInit(unittest.IsolatedAsyncioTestCase):
             self.hass.config = MagicMock()
             self.hass.config.path = MagicMock(side_effect=lambda *args: os.path.join(tmp_dir, *args))
             _sync_custom_sentences(self.hass)
-            de_file = os.path.join(tmp_dir, "custom_sentences", "de", "smart_wake.yaml")
-            en_file = os.path.join(tmp_dir, "custom_sentences", "en", "smart_wake.yaml")
-            self.assertTrue(os.path.exists(de_file))
-            self.assertTrue(os.path.exists(en_file))
+            for lang in ("de", "en", "ru", "fr", "es", "it", "nl", "pl", "pt"):
+                lang_file = os.path.join(tmp_dir, "custom_sentences", lang, "smart_wake.yaml")
+                self.assertTrue(os.path.exists(lang_file), f"Missing synced file for {lang}")
 
 
 if __name__ == "__main__":

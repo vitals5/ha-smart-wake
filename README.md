@@ -30,7 +30,7 @@
 - [Dismissal, Snooze & Anti-Cheat System](#4-dismissal-snooze--anti-cheat-system)
 - [Comprehensive Testing Modes](#5-comprehensive-testing-modes)
 - [Custom Side Panel Dashboard](#6-custom-side-panel-dashboard)
-- [Voice Assist & Intent Integration](#7-voice-assist--intent-integration)
+- [Multilingual Support & Voice Assist Integration](#7-multilingual-support--voice-assist-integration)
 - [Installation](#installation)
 - [Services](#services)
 - [License](#license)
@@ -162,19 +162,36 @@ Smart Wake automatically registers a dedicated entry in the Home Assistant sideb
 
 ---
 
-## 7. Voice Assist & Intent Integration
+## 7. Multilingual Support & Voice Assist Integration
 
-Smart Wake integrates with Home Assistant Assist and LLM pipelines using predefined voice patterns in English and German:
+Smart Wake features **full native localization and multilingual Voice Assist integration** for the 9 most widely used languages in Home Assistant:
 
-* **Set Alarm Time:**
-  * *"Set bedroom alarm to 6:30 AM."*
-  * *"Wake me up tomorrow at 7:00."*
-* **Toggle Alarm State:**
-  * *"Turn off bedroom alarm."*
-  * *"Enable school alarm."*
-* **Snooze & Dismiss:**
-  * *"Snooze alarm for five minutes."* → Triggers Snooze.
-  * *"I am awake."* / *"Stop alarm."* → Triggers Dismiss.
+| Language | Code | UI / Config Flow | Voice Assist Sentences | Cross-Lingual Room Matching |
+|---|:---:|:---:|:---:|:---:|
+| **English** | `en` |  |  |  |
+| **German** (Deutsch) | `de` |  |  |  |
+| **Russian** (Русский) | `ru` |  |  |  |
+| **French** (Français) | `fr` |  |  |  |
+| **Spanish** (Español) | `es` |  |  |  |
+| **Italian** (Italiano) | `it` |  |  |  |
+| **Dutch** (Nederlands) | `nl` |  |  |  |
+| **Polish** (Polski) | `pl` |  |  |  |
+| **Portuguese** (Português) | `pt` |  |  |  |
+
+### Automatic Sentence Syncing
+Home Assistant requires custom voice sentences to reside in `/config/custom_sentences/<lang>/`. Smart Wake **automatically synchronizes** its sentence models to your configuration folder on startup—zero manual YAML copying needed.
+
+### Cross-Lingual Room & Intent Matching
+Even if your Home Assistant instance and entity names are in one language (e.g., German *"Wecker Schlafzimmer"*), you can talk to Assist in any of the supported languages. Smart Wake automatically resolves room names across languages:
+* **English:** *"Set bedroom alarm to 7:00 AM."* / *"Turn off the alarm."* / *"Snooze for 5 minutes."* / *"I am awake."*
+* **German:** *"Stelle den Wecker Schlafzimmer auf 7:00 Uhr."* / *"Schalte den Wecker aus."* / *"10 Minuten weiterschlafen."* / *"Ich bin wach."*
+* **Russian:** *"Поставь будильник в спальне на 7 утра."* / *"Выключи будильник."* / *"Дай поспать ещё 10 минут."* / *"Я проснулся."*
+* **French:** *"Règle le réveil dans la chambre à 7h."* / *"Désactive le réveil."* / *"Encore 5 minutes de sommeil."* / *"Je suis réveillé."*
+* **Spanish:** *"Pon el despertador en el dormitorio a las 7."* / *"Desactiva el despertador."* / *"Déjame dormir 5 minutos más."* / *"Ya me desperté."*
+* **Italian:** *"Imposta la sveglia in camera da letto alle 7."* / *"Spegni la sveglia."* / *"Fammi dormire ancora 5 minuti."* / *"Sono sveglio."*
+* **Dutch:** *"Zet de wekker in de slaapkamer op 7 uur."* / *"Zet de wekker uit."* / *"Nog 5 minuten slapen."* / *"Ik ben wakker."*
+* **Polish:** *"Ustaw budzik w sypialni na siódmą."* / *"Wyłącz budzik."* / *"Daj mi pospać jeszcze 5 minut."* / *"Wstałem."*
+* **Portuguese:** *"Define o despertador no quarto para as 7."* / *"Desliga o despertador."* / *"Deixa-me dormir mais 5 minutos."* / *"Já acordei."*
 
 
 ---

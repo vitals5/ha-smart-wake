@@ -62,7 +62,7 @@ def _sync_custom_sentences(hass: HomeAssistant) -> None:
         src_base = os.path.join(os.path.dirname(__file__), "custom_sentences")
         if not os.path.isdir(src_base):
             return
-        for lang in ("de", "en", "ru"):
+        for lang in ("de", "en", "ru", "fr", "es", "it", "nl", "pl", "pt"):
             src_file = os.path.join(src_base, lang, "smart_wake.yaml")
             if not os.path.isfile(src_file):
                 continue

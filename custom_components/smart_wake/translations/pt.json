@@ -1,0 +1,179 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Smart Wake - Novo despertador",
+        "description": "Criar uma nova instância de despertador inteligente (ex: Despertador quarto, Quarto das crianças, Escritório).",
+        "data": {
+          "name": "Nome do despertador",
+          "time": "Hora do alarme (HH:MM)",
+          "enabled": "Ativar despertador imediatamente",
+          "days": "Dias da semana ativos"
+        }
+      }
+    },
+    "error": {
+      "invalid_name": "Por favor, introduza um nome válido para o despertador.",
+      "already_configured": "Já existe um despertador com este nome."
+    },
+    "abort": {
+      "already_configured": "Este despertador já está configurado."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opções do Smart Wake",
+        "description": "Selecione uma categoria para configurar o seu despertador:",
+        "menu_options": {
+          "schedule": "⏰ Horário, dias úteis e calendário",
+          "conditions": "👥 Presença, meteorologia e monitor de sono",
+          "phase1_pre_alarm": "🌅 Fase 1: Pré-alarme (Acordar suave)",
+          "phase2_main_alarm": "🔔 Fase 2: Alarme principal (Áudio e TTS)",
+          "phase3_escalation": "⚡ Fase 3: Escalação (Anti-dorminhoco)",
+          "snooze_dismiss": "🛑 Desligar, adiar e anti-batota"
+        }
+      },
+      "schedule": {
+        "title": "Horário e calendário",
+        "data": {
+          "time": "Hora pretendida (HH:MM)",
+          "days": "Dias ativos",
+          "workday_entity": "Sensor de dias úteis (opcional)",
+          "workday_only": "Ativar apenas em dias úteis",
+          "calendar_entity": "Entidade de calendário (opcional)",
+          "calendar_behavior": "Modo de filtro de calendário"
+        }
+      },
+      "conditions": {
+        "title": "Presença e gatilhos dinâmicos",
+        "data": {
+          "person_entities": "Pessoas atribuídas (person.*)",
+          "person_home_required": "Ativar apenas se a pessoa atribuída estiver em casa",
+          "weather_temp_entity": "Sensor de temperatura exterior",
+          "weather_temp_threshold": "Limite de temperatura de geada (°C)",
+          "weather_temp_offset": "Antecipação de alarme por geada (minutos)",
+          "weather_rain_entity": "Sensor de chuva / precipitação",
+          "weather_rain_offset": "Antecipação de alarme por chuva (minutos)",
+          "sleep_stage_entity": "Sensor de fases de sono",
+          "sleep_stage_window": "Janela de sono leve (minutos antes do alarme)"
+        }
+      },
+      "phase1_pre_alarm": {
+        "title": "Fase 1: Pré-alarme (Acordar suave)",
+        "data": {
+          "pre_alarm_enabled": "Ativar fase de pré-alarme",
+          "pre_alarm_duration": "Duração antes do alarme (minutos)",
+          "pre_alarm_light_entities": "Luzes de despertar (light.*)",
+          "pre_alarm_light_start_brightness": "Brilho inicial da luz (%)",
+          "pre_alarm_light_end_brightness": "Brilho pretendido da luz (%)",
+          "pre_alarm_cover_entities": "Estores / Persianas (cover.*)",
+          "pre_alarm_cover_position": "Abrir estores para (%)",
+          "pre_alarm_script_entity": "Script personalizado de pré-alarme (script.*)"
+        }
+      },
+      "phase2_main_alarm": {
+        "title": "Fase 2: Alarme principal",
+        "data": {
+          "main_media_player_entities": "Dispositivos de reprodução (media_player.*)",
+          "main_tts_media_player": "Reprodutor dedicado para TTS (opcional)",
+          "main_audio_content_id": "URL de áudio / lista de reprodução / toque",
+          "main_audio_fade_in": "Ativar aumento gradual de volume (fade-in)",
+          "main_audio_fade_duration": "Duração do fade-in (segundos)",
+          "main_audio_target_volume": "Volume pretendido da música (0.1 - 1.0)",
+          "main_tts_enabled": "Ativar relatório matinal TTS",
+          "main_tts_delay": "Atraso do TTS (segundos após início da música)",
+          "main_tts_volume": "Volume TTS (0.05 - 1.0)",
+          "main_tts_message": "Modelo TTS ({time}, {temp}, {name})",
+          "main_script_entity": "Script personalizado (script.*)"
+        }
+      },
+      "phase3_escalation": {
+        "title": "Fase 3: Modo de escalação",
+        "data": {
+          "escalation_enabled": "Ativar escalação anti-dorminhoco",
+          "escalation_delay": "Atraso após o alarme principal (minutos)",
+          "escalation_volume": "Volume de escalação (ex: 0.9 = 90%)",
+          "escalation_volume_fade_duration": "Duração do aumento de volume (segundos)",
+          "escalation_light_entities": "Luzes principais da divisão (light.*)",
+          "escalation_light_brightness": "Brilho de escalação (%)",
+          "escalation_cover_entities": "Estores (cover.*)",
+          "escalation_cover_position": "Abrir estores completamente para (%)",
+          "escalation_script_entity": "Script de escalação (script.*)"
+        }
+      },
+      "snooze_dismiss": {
+        "title": "Desligar, adiar e anti-batota",
+        "data": {
+          "snooze_duration": "Duração do adiamento (minutos)",
+          "max_snooze_count": "Número máximo de adiamentos",
+          "dismiss_button_entity": "Botão físico de desligar",
+          "dismiss_button_event": "Tipo de evento de desligar (ex: hold)",
+          "snooze_button_entity": "Botão físico de adiar",
+          "snooze_button_event": "Tipo de evento de adiar (ex: single)",
+          "dismiss_motion_entities": "Detetores de movimento anti-batota (casa de banho/cozinha)",
+          "dismiss_power_sensor": "Sensor de consumo de eletrodoméstico",
+          "dismiss_power_threshold": "Limite de potência para desligar (Watts)",
+          "dismiss_input_boolean": "Interruptor auxiliar anti-batota (input_boolean.*)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "time": {
+      "time": {
+        "name": "Hora do alarme"
+      }
+    },
+    "switch": {
+      "enabled": {
+        "name": "Ativado"
+      }
+    },
+    "sensor": {
+      "status": {
+        "name": "Estado"
+      },
+      "next_alarm": {
+        "name": "Próximo alarme"
+      },
+      "active_phase": {
+        "name": "Fase ativa"
+      },
+      "snooze_count": {
+        "name": "Contador de adiamentos"
+      },
+      "dynamic_offset": {
+        "name": "Ajuste dinâmico de meteorologia"
+      }
+    },
+    "button": {
+      "snooze": {
+        "name": "Adiar"
+      },
+      "dismiss": {
+        "name": "Desligar"
+      },
+      "test": {
+        "name": "Testar alarme (demo rápida)"
+      },
+      "full_test": {
+        "name": "Teste completo do alarme"
+      },
+      "skip_next": {
+        "name": "Ignorar próximo alarme"
+      }
+    },
+    "number": {
+      "snooze_duration": {
+        "name": "Duração do adiamento"
+      },
+      "max_snooze_count": {
+        "name": "Número máx. de adiamentos"
+      },
+      "pre_alarm_duration": {
+        "name": "Duração de pré-alarme"
+      }
+    }
+  }
+}

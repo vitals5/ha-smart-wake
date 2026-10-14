@@ -1,0 +1,179 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Smart Wake - Nieuwe wekker",
+        "description": "Maak een nieuw slim wekker-exemplaar aan (bijv. Wekker slaapkamer, Kinderkamer of Kantoor).",
+        "data": {
+          "name": "Wekker naam",
+          "time": "Wektijd (UU:MM)",
+          "enabled": "Wekker direct inschakelen",
+          "days": "Actieve weekdagen"
+        }
+      }
+    },
+    "error": {
+      "invalid_name": "Voer een geldige wekkernaam in.",
+      "already_configured": "Er bestaat al een wekker met deze naam."
+    },
+    "abort": {
+      "already_configured": "Deze wekker is al geconfigureerd."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Smart Wake Instellingen",
+        "description": "Kies een categorie om uw slimme wekker te configureren:",
+        "menu_options": {
+          "schedule": "⏰ Tijdschema, werkdagen & kalender",
+          "conditions": "👥 Aanwezigheid, weer & slaaptracker",
+          "phase1_pre_alarm": "🌅 Fase 1: Pre-alarm (Zacht ontwaken)",
+          "phase2_main_alarm": "🔔 Fase 2: Hoofdalarm (Audio & TTS)",
+          "phase3_escalation": "⚡ Fase 3: Escalatie (Anti-verslapen)",
+          "snooze_dismiss": "🛑 Uitschakelen, snoozen & anti-cheat"
+        }
+      },
+      "schedule": {
+        "title": "Tijdschema & kalender",
+        "data": {
+          "time": "Doeltijd (UU:MM)",
+          "days": "Actieve dagen",
+          "workday_entity": "Werkdag-sensor (optioneel)",
+          "workday_only": "Alleen op werkdagen activeren",
+          "calendar_entity": "Kalender-entiteit (optioneel)",
+          "calendar_behavior": "Kalenderfilter modus"
+        }
+      },
+      "conditions": {
+        "title": "Aanwezigheid & dynamische triggers",
+        "data": {
+          "person_entities": "Toegewezen personen (person.*)",
+          "person_home_required": "Alleen activeren als toegewezen persoon thuis is",
+          "weather_temp_entity": "Buitentemperatuursensor",
+          "weather_temp_threshold": "Vorstdrempelwaarde (°C)",
+          "weather_temp_offset": "Vroeger wekken bij vorst (minuten)",
+          "weather_rain_entity": "Regen- / neerslagsensor",
+          "weather_rain_offset": "Vroeger wekken bij regen (minuten)",
+          "sleep_stage_entity": "Slaapfasesensor",
+          "sleep_stage_window": "Lichte slaap ontwaakvenster (minuten voor het alarm)"
+        }
+      },
+      "phase1_pre_alarm": {
+        "title": "Fase 1: Pre-alarm (Zacht ontwaken)",
+        "data": {
+          "pre_alarm_enabled": "Pre-alarmfase inschakelen",
+          "pre_alarm_duration": "Duur voor het alarm (minuten)",
+          "pre_alarm_light_entities": "Wekverlichting (light.*)",
+          "pre_alarm_light_start_brightness": "Start-helderheid licht (%)",
+          "pre_alarm_light_end_brightness": "Doel-helderheid licht (%)",
+          "pre_alarm_cover_entities": "Rolluiken / Jaloezieën (cover.*)",
+          "pre_alarm_cover_position": "Rolluiken openen naar (%)",
+          "pre_alarm_script_entity": "Aangepast pre-alarm script (script.*)"
+        }
+      },
+      "phase2_main_alarm": {
+        "title": "Fase 2: Hoofdalarm",
+        "data": {
+          "main_media_player_entities": "Afspeelapparaten (media_player.*)",
+          "main_tts_media_player": "Toegewijde speler voor TTS (optioneel)",
+          "main_audio_content_id": "Audio stream / playlist URL / beltoon",
+          "main_audio_fade_in": "Geleidelijke geluidsfade-in inschakelen",
+          "main_audio_fade_duration": "Fade-in duur (seconden)",
+          "main_audio_target_volume": "Doelvolume muziek (0.1 - 1.0)",
+          "main_tts_enabled": "TTS-ochtendbriefing inschakelen",
+          "main_tts_delay": "TTS-vertraging (seconden na muziekstart)",
+          "main_tts_volume": "TTS-volume (0.05 - 1.0)",
+          "main_tts_message": "TTS-sjabloon ({time}, {temp}, {name})",
+          "main_script_entity": "Aangepast script (script.*)"
+        }
+      },
+      "phase3_escalation": {
+        "title": "Fase 3: Escalatiemodus",
+        "data": {
+          "escalation_enabled": "Escalatie tegen verslapen inschakelen",
+          "escalation_delay": "Vertraging na hoofdalarm (minuten)",
+          "escalation_volume": "Escalatievolume (bijv. 0.9 = 90%)",
+          "escalation_volume_fade_duration": "Duur van volumestijging (seconden)",
+          "escalation_light_entities": "Hoofdverlichting kamer (light.*)",
+          "escalation_light_brightness": "Escalatie-helderheid (%)",
+          "escalation_cover_entities": "Rolluiken (cover.*)",
+          "escalation_cover_position": "Rolluiken volledig openen naar (%)",
+          "escalation_script_entity": "Escalatie script (script.*)"
+        }
+      },
+      "snooze_dismiss": {
+        "title": "Uitschakelen, snoozen & anti-cheat",
+        "data": {
+          "snooze_duration": "Snooze-duur (minuten)",
+          "max_snooze_count": "Maximaal aantal snoozes",
+          "dismiss_button_entity": "Hardware uitschakelknop",
+          "dismiss_button_event": "Gebeurtenistype uitschakelknop (bijv. hold)",
+          "snooze_button_entity": "Hardware snoozeknop",
+          "snooze_button_event": "Gebeurtenistype snoozeknop (bijv. single)",
+          "dismiss_motion_entities": "Anti-cheat bewegingsmelders (badkamer/keuken)",
+          "dismiss_power_sensor": "Anti-cheat apparaat vermogenssensor",
+          "dismiss_power_threshold": "Vermogensdrempel om uit te schakelen (Watt)",
+          "dismiss_input_boolean": "Anti-cheat hulpschakelaar (input_boolean.*)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "time": {
+      "time": {
+        "name": "Wektijd"
+      }
+    },
+    "switch": {
+      "enabled": {
+        "name": "Ingeschakeld"
+      }
+    },
+    "sensor": {
+      "status": {
+        "name": "Status"
+      },
+      "next_alarm": {
+        "name": "Volgende wekker"
+      },
+      "active_phase": {
+        "name": "Actieve fase"
+      },
+      "snooze_count": {
+        "name": "Snooze-teller"
+      },
+      "dynamic_offset": {
+        "name": "Dynamische weer-offset"
+      }
+    },
+    "button": {
+      "snooze": {
+        "name": "Snoozen"
+      },
+      "dismiss": {
+        "name": "Uitschakelen"
+      },
+      "test": {
+        "name": "Wekker testen (snelle demo)"
+      },
+      "full_test": {
+        "name": "Volledige wekkertest"
+      },
+      "skip_next": {
+        "name": "Volgende wekker overslaan"
+      }
+    },
+    "number": {
+      "snooze_duration": {
+        "name": "Snooze-duur"
+      },
+      "max_snooze_count": {
+        "name": "Max snooze-aantal"
+      },
+      "pre_alarm_duration": {
+        "name": "Pre-alarmduur"
+      }
+    }
+  }
+}

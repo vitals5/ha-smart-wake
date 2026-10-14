@@ -1,0 +1,58 @@
+language: "nl"
+intents:
+  SmartWakeSetTime:
+    data:
+      - sentences:
+          - "zet [de] [wekker] {alarm} op {time} [uur]"
+          - "zet de wekker op {time} [uur]"
+          - "maak me morgen om {time} [uur] wakker"
+          - "maak me om {time} [uur] wakker"
+          - "verander [de] [wekker] {alarm} naar {time} [uur]"
+          - "verander de wekker naar {time} [uur]"
+
+  SmartWakeSetStatus:
+    data:
+      - sentences:
+          - "zet [de] [wekker] {alarm} aan"
+          - "zet de wekker aan"
+          - "activeer [de] [wekker] {alarm}"
+          - "activeer de wekker"
+        slots:
+          status: "on"
+      - sentences:
+          - "zet [de] [wekker] {alarm} uit"
+          - "zet de wekker uit"
+          - "deactiveer [de] [wekker] {alarm}"
+          - "deactiveer de wekker"
+          - "zet de wekker voor morgen uit"
+        slots:
+          status: "off"
+
+  SmartWakeSnooze:
+    data:
+      - sentences:
+          - "snooze [de] wekker"
+          - "snooze"
+          - "nog {duration} minuten slapen"
+          - "nog vijf minuten slapen"
+          - "nog tien minuten slapen"
+          - "nog even doorslapen"
+
+  SmartWakeDismiss:
+    data:
+      - sentences:
+          - "ik ben wakker"
+          - "ik ben opgestaan"
+          - "stop [de] wekker"
+          - "stop [de] [wekker] {alarm}"
+          - "alarm stoppen"
+
+lists:
+  alarm:
+    wildcard: true
+  time:
+    wildcard: true
+  duration:
+    range:
+      from: 1
+      to: 60
