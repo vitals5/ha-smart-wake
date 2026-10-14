@@ -31,7 +31,6 @@
 - [Comprehensive Testing Modes](#5-comprehensive-testing-modes)
 - [Custom Side Panel Dashboard](#6-custom-side-panel-dashboard)
 - [Voice Assist & Intent Integration](#7-voice-assist--intent-integration)
-- [Automation Blueprints](#8-automation-blueprints)
 - [Installation](#installation)
 - [Services](#services)
 - [License](#license)
@@ -177,26 +176,6 @@ Smart Wake integrates with Home Assistant Assist and LLM pipelines using predefi
   * *"Snooze alarm for five minutes."* → Triggers Snooze.
   * *"I am awake."* / *"Stop alarm."* → Triggers Dismiss.
 
----
-
-## 8. Automation Blueprints
-
-Smart Wake includes ready-to-use blueprints with 1-click Home Assistant import:
-
-### 1. Anti-Cheat Dismissal Automation
-Automatically dismisses the alarm when motion is detected in the bathroom or when the coffee machine is turned on.
-
-[![Import Blueprint: Anti-Cheat Dismiss](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fvitals5%2Fha-smart-wake%2Fmain%2Fblueprints%2Fautomation%2Fsmart_wake%2Fanti_cheat_dismiss.yaml)
-
-### 2. Hardware Button Control
-Maps any Zigbee or Z-Wave button to Snooze (single click) and Dismiss (double click or hold).
-
-[![Import Blueprint: Hardware Button Control](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fvitals5%2Fha-smart-wake%2Fmain%2Fblueprints%2Fautomation%2Fsmart_wake%2Fhardware_button_control.yaml)
-
-### 3. Weather Early Wake Notification
-Sends a smartphone push notification the evening before or morning of an adjusted wake time due to freezing temperatures or rain.
-
-[![Import Blueprint: Weather Early Wake Notification](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fvitals5%2Fha-smart-wake%2Fmain%2Fblueprints%2Fautomation%2Fsmart_wake%2Fweather_early_wake_notification.yaml)
 
 ---
 
