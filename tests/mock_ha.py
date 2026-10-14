@@ -150,9 +150,10 @@ class MockIntentResponse:
         self.speech = text
 
 class MockIntentObj:
-    def __init__(self, hass, slots=None):
+    def __init__(self, hass, slots=None, language="de"):
         self.hass = hass
         self.slots = slots or {}
+        self.language = language
     def create_response(self):
         return MockIntentResponse()
 
