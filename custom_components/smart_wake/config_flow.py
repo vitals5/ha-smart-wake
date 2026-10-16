@@ -138,6 +138,7 @@ from .const import (
     CONF_MAX_SNOOZE_COUNT,
     CONF_MOBILE_ALARM_ENTITY,
     CONF_ALARM_SOURCE_MODE,
+    CONF_MOBILE_DISMISS_SYNC,
     CONF_NAME,
     CONF_PERSON_ENTITIES,
     CONF_PERSON_HOME_REQUIRED,
@@ -201,6 +202,7 @@ from .const import (
     ALARM_SOURCE_MOBILE_ONLY,
     ALARM_SOURCE_FIXED_ONLY,
     DEFAULT_ALARM_SOURCE_MODE,
+    DEFAULT_MOBILE_DISMISS_SYNC,
     DOMAIN,
     WEEKDAY_NAMES_DE,
     WEEKDAYS,
@@ -366,6 +368,12 @@ class SmartWakeOptionsFlowHandler(config_entries.OptionsFlow):
                         mode=SelectSelectorMode.LIST,
                     )
                 ) if SelectSelector else str,
+                vol.Required(
+                    CONF_MOBILE_DISMISS_SYNC,
+                    default=self._options.get(
+                        CONF_MOBILE_DISMISS_SYNC, DEFAULT_MOBILE_DISMISS_SYNC
+                    ),
+                ): bool,
                 vol.Optional(
                     CONF_WORKDAY_ENTITY,
                     description={"suggested_value": self._options.get(CONF_WORKDAY_ENTITY)},

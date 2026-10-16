@@ -1637,6 +1637,7 @@ class SmartWakePanel extends HTMLElement {
         days: alarm && alarm.days ? [...alarm.days] : ["mon", "tue", "wed", "thu", "fri"],
         mobile_alarm_entity: rawCfg.mobile_alarm_entity ?? sumCfg.mobile_alarm_entity ?? "",
         alarm_source_mode: rawCfg.alarm_source_mode ?? sumCfg.alarm_source_mode ?? "mobile_priority",
+        mobile_dismiss_sync: Boolean(rawCfg.mobile_dismiss_sync ?? sumCfg.mobile_dismiss_sync ?? true),
 
         // Conditions
         workday_only: Boolean(rawCfg.workday_only ?? sumCfg.workday_only ?? false),
@@ -1727,6 +1728,7 @@ class SmartWakePanel extends HTMLElement {
         days: ["mon", "tue", "wed", "thu", "fri"],
         mobile_alarm_entity: "",
         alarm_source_mode: "mobile_priority",
+        mobile_dismiss_sync: true,
 
         workday_only: false,
         workday_entity: "binary_sensor.workday_sensor",
@@ -1865,6 +1867,7 @@ class SmartWakePanel extends HTMLElement {
     if (getVal("f_mobile_alarm_entity") !== undefined) this._editConfig.mobile_alarm_entity = getVal("f_mobile_alarm_entity");
     const sourceRadio = root.querySelector("input[name='f_alarm_source_mode']:checked");
     if (sourceRadio) this._editConfig.alarm_source_mode = sourceRadio.value;
+    if (getChecked("f_mobile_dismiss_sync") !== undefined) this._editConfig.mobile_dismiss_sync = getChecked("f_mobile_dismiss_sync");
 
     // Conditions Tab
     if (getChecked("f_workday_only") !== undefined) this._editConfig.workday_only = getChecked("f_workday_only");
@@ -1956,6 +1959,7 @@ class SmartWakePanel extends HTMLElement {
         days: this._editConfig.days,
         mobile_alarm_entity: this._editConfig.mobile_alarm_entity || null,
         alarm_source_mode: this._editConfig.alarm_source_mode || "mobile_priority",
+        mobile_dismiss_sync: Boolean(this._editConfig.mobile_dismiss_sync),
 
         workday_only: Boolean(this._editConfig.workday_only),
         workday_entity: this._editConfig.workday_entity || null,
@@ -3146,6 +3150,17 @@ class SmartWakePanel extends HTMLElement {
                 </div>
               </label>
             </div>
+          </div>
+
+          <div class="form-checkbox-row" style="margin-top: 14px;">
+            <div class="form-checkbox-label">
+              <span>Handy-Quittierung synchronisieren (Bidirektional)</span>
+              <span class="form-hint">Ausschalten oder Schlummern auf dem Smartphone beendet bzw. pausiert auch Smart Wake</span>
+            </div>
+            <label class="switch-toggle">
+              <input type="checkbox" id="f_mobile_dismiss_sync" ${cfg.mobile_dismiss_sync !== false ? "checked" : ""}>
+              <span class="slider"></span>
+            </label>
           </div>
         `;
 

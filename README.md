@@ -67,7 +67,7 @@ Smart Wake is built on Home Assistant's modern `config_flow` architecture:
 
 Before triggering, each alarm evaluates a smart condition and offset pipeline:
 
-* **Mobile Phone Alarm Trigger & Companion App Synchronization:**
+* **Mobile Phone Alarm Trigger & Bidirectional Synchronization:**
   * Seamlessly syncs with your Android or iOS smartphone alarm via the Home Assistant Companion App (`sensor.<phone>_next_alarm`).
   * Live state-tracking listens for changes in real-time, automatically recalculating pre-alarm and main alarm schedules.
   * Robust parsing supports ISO-8601 strings and UNIX timestamps, and gracefully handles `unavailable`, `unknown`, `not available`, or `none` when no phone alarm is set.
@@ -76,6 +76,11 @@ Before triggering, each alarm evaluates a smart condition and offset pipeline:
     2. **Earliest Alarm Wins (`earliest`):** Compares both phone alarm and fixed schedule and triggers whichever is earlier.
     3. **Phone Only (`mobile_only`):** Strictly wakes according to your phone. Remains idle (`Wartet auf Handy-Wecker`) when no phone alarm is set.
     4. **Fixed Schedule Only (`fixed_only`):** Ignores phone alarms and triggers exclusively on the configured fixed schedule.
+  * **Bidirectional Dismissal & Snooze Synchronization (`mobile_dismiss_sync`, Default: Enabled):**
+    * When both your smartphone and Smart Wake are ringing, dismissing the alarm on your phone automatically stops and dismisses Smart Wake in Home Assistant—no need to dismiss twice!
+    * Tapping "Snooze" (Schlummern) on your smartphone automatically puts Smart Wake into Snooze as well, keeping both devices synchronized.
+    * Turning off or deleting an upcoming alarm on your phone while Smart Wake is running its gentle pre-alarm phase immediately cancels the pre-alarm and turns off the sunrise lights.
+    * Fully compatible with Anti-Cheat: if physical proof-of-wakeup is configured, dismissing the phone alarm diverts to Snooze until the physical condition (e.g., bathroom motion or NFC) is fulfilled.
 * **Workday & Calendar Filters:**
   * Direct integration with `binary_sensor.workday_sensor` (only ring on business days).
   * HA Calendar integration (`calendar.*`): Trigger only when calendar events match, or skip on holidays/vacation days.

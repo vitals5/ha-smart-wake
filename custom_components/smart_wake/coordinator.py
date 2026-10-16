@@ -118,6 +118,7 @@ from .const import (
     CONF_MAX_SNOOZE_COUNT,
     CONF_MOBILE_ALARM_ENTITY,
     CONF_ALARM_SOURCE_MODE,
+    CONF_MOBILE_DISMISS_SYNC,
     CONF_NAME,
     CONF_PERSON_ENTITIES,
     CONF_PERSON_HOME_REQUIRED,
@@ -148,6 +149,7 @@ from .const import (
     ALARM_SOURCE_MOBILE_ONLY,
     ALARM_SOURCE_FIXED_ONLY,
     DEFAULT_ALARM_SOURCE_MODE,
+    DEFAULT_MOBILE_DISMISS_SYNC,
     DEFAULT_DAYS,
     DEFAULT_DISMISS_POWER_THRESHOLD,
     DEFAULT_ESCALATION_COVER_POSITION,
@@ -262,6 +264,7 @@ class SmartWakeAlarm:
         # Mobile alarm tracking & source
         self._mobile_alarm_time: datetime | None = None
         self._active_alarm_source: str = "fixed"
+        self._active_alarm_target: datetime | None = None
 
     # -------------------------------------------------------------------------
     # Properties
@@ -275,6 +278,11 @@ class SmartWakeAlarm:
     def alarm_source_mode(self) -> str:
         """Return configured alarm source mode."""
         return self._config.get(CONF_ALARM_SOURCE_MODE, DEFAULT_ALARM_SOURCE_MODE)
+
+    @property
+    def mobile_dismiss_sync(self) -> bool:
+        """Return whether mobile alarm dismiss/snooze sync is enabled."""
+        return bool(self._config.get(CONF_MOBILE_DISMISS_SYNC, DEFAULT_MOBILE_DISMISS_SYNC))
 
     @property
     def mobile_alarm_time(self) -> datetime | None:
@@ -505,6 +513,7 @@ class SmartWakeAlarm:
         self._cancel_dry_run()
         self._cleanup_listeners()
         self._cancel_fade_tasks()
+        self._active_alarm_target = None
 
     def update_config(self, new_config: dict[str, Any]) -> None:
         """Update instance configuration and recalculate schedule."""
@@ -811,8 +820,15 @@ class SmartWakeAlarm:
 
         if sensor_entities and hasattr(self.hass, "states"):
             @callback
-            def _sensor_state_changed(_event: Event) -> None:
-                self.hass.async_create_task(self.async_recalculate_schedule())
+            def _sensor_state_changed(event: Event) -> None:
+                entity_id = getattr(event, "data", {}).get("entity_id") if event and hasattr(event, "data") else None
+                mobile_ent = self._config.get(CONF_MOBILE_ALARM_ENTITY)
+                if entity_id and mobile_ent and entity_id == mobile_ent:
+                    self.hass.async_create_task(self._handle_mobile_alarm_state_change())
+                elif not entity_id and mobile_ent:
+                    self.hass.async_create_task(self._handle_mobile_alarm_state_change())
+                else:
+                    self.hass.async_create_task(self.async_recalculate_schedule())
 
             try:
                 self._unsub_dynamic_sensors = async_track_state_change_event(
@@ -820,6 +836,49 @@ class SmartWakeAlarm:
                 )
             except Exception as err:
                 _LOGGER.debug("Could not attach state change tracker: %s", err)
+
+    async def _handle_mobile_alarm_state_change(self) -> None:
+        """Handle state change of the mobile phone alarm sensor (supports bidirectional dismiss/snooze)."""
+        if not self._enabled:
+            return
+
+        sync_dismiss = self.mobile_dismiss_sync
+        is_active = self._status in (STATUS_PRE_ALARM, STATUS_RINGING, STATUS_SNOOZED)
+
+        if is_active and sync_dismiss and self._active_alarm_target:
+            new_mobile_dt = self._parse_mobile_alarm_time()
+            now = dt_util.now()
+
+            # Target difference: seconds between the new mobile alarm time and the active target
+            target_diff = abs((new_mobile_dt - self._active_alarm_target).total_seconds()) if new_mobile_dt else None
+
+            # If the phone alarm time changed from the active target (or became unavailable/None)
+            if new_mobile_dt is None or (target_diff is not None and target_diff > 60):
+                # Check if it was a snooze on the phone (ringing and new alarm within next 25 minutes)
+                is_phone_snooze = (
+                    new_mobile_dt is not None
+                    and self._status == STATUS_RINGING
+                    and now < new_mobile_dt <= now + timedelta(minutes=25)
+                )
+
+                if is_phone_snooze:
+                    _LOGGER.info(
+                        "Smart Wake [%s] Mobile phone alarm was snoozed on device (new time: %s). Synchronizing snooze.",
+                        self._name,
+                        new_mobile_dt.strftime("%H:%M"),
+                    )
+                    await self.async_snooze()
+                    return
+                else:
+                    _LOGGER.info(
+                        "Smart Wake [%s] Mobile phone alarm was dismissed/turned off on device. Dismissing Smart Wake.",
+                        self._name,
+                    )
+                    await self.async_dismiss()
+                    return
+
+        # If not active or after sync check, recalculate normal schedule
+        await self.async_recalculate_schedule()
 
     def _arm_schedule_timer(self) -> None:
         """Arm exact point-in-time callback for pre-alarm or main alarm."""
@@ -921,6 +980,7 @@ class SmartWakeAlarm:
         # Start phase progression
         pre_alarm_enabled = self._config.get(CONF_PRE_ALARM_ENABLED, DEFAULT_PRE_ALARM_ENABLED)
         now = dt_util.now()
+        self._active_alarm_target = self._next_alarm
 
         # If pre-alarm enabled and target is still in future
         if pre_alarm_enabled and self._next_alarm and self._next_alarm > now:
@@ -931,6 +991,8 @@ class SmartWakeAlarm:
     async def async_start_pre_alarm(self) -> None:
         """Trigger Phase 1: Pre-Alarm (Sanftes Wecken)."""
         _LOGGER.info("Smart Wake [%s] starting Phase 1: Pre-Alarm", self._name)
+        if not self._active_alarm_target:
+            self._active_alarm_target = self._next_alarm
         self._status = STATUS_PRE_ALARM
         self._active_phase = PHASE_PRE_ALARM
         self._fire_event(EVENT_SMART_WAKE_PRE_ALARM_STARTED)
@@ -958,6 +1020,8 @@ class SmartWakeAlarm:
     async def async_start_main_alarm(self) -> None:
         """Trigger Phase 2: Main Alarm (Weckzeitpunkt)."""
         _LOGGER.info("Smart Wake [%s] starting Phase 2: Main Alarm", self._name)
+        if not self._active_alarm_target:
+            self._active_alarm_target = self._next_alarm or dt_util.now()
         self._cancel_phase_timer()
         self._status = STATUS_RINGING
         self._active_phase = PHASE_MAIN_ALARM
@@ -1131,6 +1195,7 @@ class SmartWakeAlarm:
         self._full_test_snooze_seconds = None
         self._anti_cheat_nfc_scanned = False
         self._snooze_until = None
+        self._active_alarm_target = None
         self._cancel_phase_timer()
         self._cancel_fade_tasks()
         self._cleanup_listeners()

@@ -41,6 +41,7 @@
           "days": "Giorni attivi",
           "mobile_alarm_entity": "Sensore prossima sveglia (Telefono cellulare)",
           "alarm_source_mode": "Priorità sorgente sveglia",
+          "mobile_dismiss_sync": "Sincronizza arresto cellulare (spegnere la sveglia sul telefono arresta Smart Wake)",
           "workday_entity": "Sensore giorni lavorativi (opzionale)",
           "workday_only": "Attiva solo nei giorni lavorativi",
           "calendar_entity": "Entità calendario (opzionale)",

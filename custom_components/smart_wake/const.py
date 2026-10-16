@@ -5,7 +5,7 @@ import os
 
 DOMAIN = "smart_wake"
 NAME = "Smart Wake"
-VERSION = "1.0.19"
+VERSION = "1.0.20"
 
 # Static assets and frontend paths
 URL_BASE = "/smart_wake_frontend"
@@ -80,6 +80,7 @@ CONF_CALENDAR_BEHAVIOR = "calendar_behavior"
 # Mobile phone alarm sensor & source mode
 CONF_MOBILE_ALARM_ENTITY = "mobile_alarm_entity"
 CONF_ALARM_SOURCE_MODE = "alarm_source_mode"
+CONF_MOBILE_DISMISS_SYNC = "mobile_dismiss_sync"
 
 ALARM_SOURCE_MOBILE_PRIORITY = "mobile_priority"  # Handy-Wecker hat Vorrang, feste Zeit nur als Fallback (empfohlen)
 ALARM_SOURCE_EARLIEST = "earliest"                # Beide aktiv – wer zuerst kommt, gewinnt
@@ -87,6 +88,7 @@ ALARM_SOURCE_MOBILE_ONLY = "mobile_only"          # Nur Handy-Wecker
 ALARM_SOURCE_FIXED_ONLY = "fixed_only"            # Nur feste Weckzeit
 
 DEFAULT_ALARM_SOURCE_MODE = ALARM_SOURCE_MOBILE_PRIORITY
+DEFAULT_MOBILE_DISMISS_SYNC = True
 
 CALENDAR_BEHAVIOR_NONE = "none"
 CALENDAR_BEHAVIOR_ONLY_IF_EVENT = "only_if_event"

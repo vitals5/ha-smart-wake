@@ -41,6 +41,7 @@
           "days": "Dias ativos",
           "mobile_alarm_entity": "Sensor do próximo alarme (Telemóvel)",
           "alarm_source_mode": "Prioridade da fonte de alarme",
+          "mobile_dismiss_sync": "Sincronizar desativação do telemóvel (desligar alarme no telemóvel desliga Smart Wake)",
           "workday_entity": "Sensor de dias úteis (opcional)",
           "workday_only": "Ativar apenas em dias úteis",
           "calendar_entity": "Entidade de calendário (opcional)",
