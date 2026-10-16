@@ -41,7 +41,6 @@
           "days": "Jours actifs",
           "mobile_alarm_entity": "Capteur du prochain réveil (Téléphone)",
           "alarm_source_mode": "Priorité de la source d'alarme",
-          "mobile_dismiss_sync": "Synchroniser l'arrêt mobile (arrêter le réveil sur le téléphone arrête Smart Wake)",
           "workday_entity": "Capteur de jours ouvrés (optionnel)",
           "workday_only": "Déclencher uniquement les jours ouvrés",
           "calendar_entity": "Calendrier (optionnel)",

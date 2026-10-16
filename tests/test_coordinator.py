@@ -36,7 +36,6 @@ from custom_components.smart_wake.const import (
     CONF_MAIN_TTS_VOLUME,
     CONF_MAX_SNOOZE_COUNT,
     CONF_MOBILE_ALARM_ENTITY,
-    CONF_MOBILE_DISMISS_SYNC,
     CONF_NAME,
     CONF_PERSON_ENTITIES,
     CONF_PERSON_HOME_REQUIRED,
@@ -959,8 +958,8 @@ class TestSmartWakeCoordinator(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(alarm.active_alarm_source, "mobile")
         self.assertEqual(int(alarm.next_alarm.timestamp()), int(new_phone_time.timestamp()))
 
-    async def test_mobile_dismiss_sync_ringing_dismiss(self) -> None:
-        """Test dismissing mobile phone alarm while Smart Wake is ringing dismisses Smart Wake."""
+    async def test_mobile_sensor_state_change_does_not_interrupt_ringing_snooze_or_pre_alarm(self) -> None:
+        """Test that mobile alarm sensor updates (like unavailable when ringing) do not disrupt active alarm cycles."""
         from homeassistant.util import dt as dt_util
 
         now = dt_util.now()
@@ -968,129 +967,39 @@ class TestSmartWakeCoordinator(unittest.IsolatedAsyncioTestCase):
         self.hass.states.set("sensor.phone_next_alarm", target_time.isoformat())
 
         cfg = {
-            CONF_NAME: "Sync Dismiss Wecker",
+            CONF_NAME: "No Interrupt Wecker",
             CONF_TIME: "07:00",
             CONF_ENABLED: True,
             CONF_DAYS: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
             CONF_MOBILE_ALARM_ENTITY: "sensor.phone_next_alarm",
-            CONF_MOBILE_DISMISS_SYNC: True,
-            CONF_PRE_ALARM_ENABLED: False,
-        }
-        alarm = SmartWakeAlarm(self.hass, "test_sync_dismiss", cfg)
-        await alarm.async_setup()
-
-        # Simulate alarm ringing
-        alarm._status = STATUS_RINGING
-        alarm._active_phase = PHASE_MAIN_ALARM
-        alarm._active_alarm_target = target_time
-
-        # User dismisses alarm on phone -> phone sensor becomes unavailable
-        self.hass.states.set("sensor.phone_next_alarm", "unavailable")
-        await alarm._handle_mobile_alarm_state_change()
-
-        self.assertEqual(alarm.status, STATUS_IDLE)
-        self.assertEqual(alarm.active_phase, PHASE_NONE)
-        self.assertIsNone(alarm._active_alarm_target)
-
-    async def test_mobile_dismiss_sync_ringing_snooze(self) -> None:
-        """Test snoozing mobile phone alarm while Smart Wake is ringing snoozes Smart Wake."""
-        from homeassistant.util import dt as dt_util
-
-        now = dt_util.now()
-        target_time = now + timedelta(seconds=10)
-        self.hass.states.set("sensor.phone_next_alarm", target_time.isoformat())
-
-        cfg = {
-            CONF_NAME: "Sync Snooze Wecker",
-            CONF_TIME: "07:00",
-            CONF_ENABLED: True,
-            CONF_DAYS: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
-            CONF_MOBILE_ALARM_ENTITY: "sensor.phone_next_alarm",
-            CONF_MOBILE_DISMISS_SYNC: True,
-            CONF_SNOOZE_DURATION: 9,
-            CONF_PRE_ALARM_ENABLED: False,
-        }
-        alarm = SmartWakeAlarm(self.hass, "test_sync_snooze", cfg)
-        await alarm.async_setup()
-
-        # Simulate alarm ringing
-        alarm._status = STATUS_RINGING
-        alarm._active_phase = PHASE_MAIN_ALARM
-        alarm._active_alarm_target = target_time
-
-        # User snoozes alarm on phone -> phone sensor updates to now + 9 minutes
-        snooze_time = now + timedelta(minutes=9)
-        self.hass.states.set("sensor.phone_next_alarm", snooze_time.isoformat())
-        await alarm._handle_mobile_alarm_state_change()
-
-        self.assertEqual(alarm.status, STATUS_SNOOZED)
-        self.assertEqual(alarm.snooze_count, 1)
-
-    async def test_mobile_dismiss_sync_pre_alarm_dismiss(self) -> None:
-        """Test turning off mobile phone alarm during pre-alarm cancels pre-alarm."""
-        from homeassistant.util import dt as dt_util
-
-        now = dt_util.now()
-        target_time = now + timedelta(minutes=30)
-        self.hass.states.set("sensor.phone_next_alarm", target_time.isoformat())
-
-        cfg = {
-            CONF_NAME: "Sync PreAlarm Wecker",
-            CONF_TIME: "07:00",
-            CONF_ENABLED: True,
-            CONF_DAYS: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
-            CONF_MOBILE_ALARM_ENTITY: "sensor.phone_next_alarm",
-            CONF_MOBILE_DISMISS_SYNC: True,
             CONF_PRE_ALARM_ENABLED: True,
-            CONF_PRE_ALARM_DURATION: 30,
         }
-        alarm = SmartWakeAlarm(self.hass, "test_sync_pre_alarm", cfg)
+        alarm = SmartWakeAlarm(self.hass, "test_no_interrupt", cfg)
         await alarm.async_setup()
 
-        # Simulate pre-alarm running
-        alarm._status = STATUS_PRE_ALARM
-        alarm._active_phase = PHASE_PRE_ALARM
-        alarm._active_alarm_target = target_time
-
-        # User cancels tomorrow's / morning alarm on phone (sensor changes or becomes unavailable)
-        self.hass.states.set("sensor.phone_next_alarm", "none")
-        await alarm._handle_mobile_alarm_state_change()
-
-        self.assertEqual(alarm.status, STATUS_IDLE)
-        self.assertEqual(alarm.active_phase, PHASE_NONE)
-
-    async def test_mobile_dismiss_sync_disabled(self) -> None:
-        """Test that phone alarm change does not dismiss Smart Wake when mobile_dismiss_sync is False."""
-        from homeassistant.util import dt as dt_util
-
-        now = dt_util.now()
-        target_time = now + timedelta(seconds=10)
-        self.hass.states.set("sensor.phone_next_alarm", target_time.isoformat())
-
-        cfg = {
-            CONF_NAME: "Sync Disabled Wecker",
-            CONF_TIME: "07:00",
-            CONF_ENABLED: True,
-            CONF_DAYS: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
-            CONF_MOBILE_ALARM_ENTITY: "sensor.phone_next_alarm",
-            CONF_MOBILE_DISMISS_SYNC: False,
-            CONF_PRE_ALARM_ENABLED: False,
-        }
-        alarm = SmartWakeAlarm(self.hass, "test_sync_disabled", cfg)
-        await alarm.async_setup()
-
-        # Simulate alarm ringing
+        # 1. Ringing state: phone sensor becomes unavailable (standard Android behavior when alarm fires)
         alarm._status = STATUS_RINGING
         alarm._active_phase = PHASE_MAIN_ALARM
-        alarm._active_alarm_target = target_time
-
-        # Phone sensor changes to unavailable
         self.hass.states.set("sensor.phone_next_alarm", "unavailable")
         await alarm._handle_mobile_alarm_state_change()
 
-        # Smart Wake should still be ringing!
+        # Smart Wake must continue ringing undisturbed!
         self.assertEqual(alarm.status, STATUS_RINGING)
         self.assertEqual(alarm.active_phase, PHASE_MAIN_ALARM)
+
+        # 2. Snoozed state: phone sensor state changes
+        alarm._status = STATUS_SNOOZED
+        self.hass.states.set("sensor.phone_next_alarm", "unavailable")
+        await alarm._handle_mobile_alarm_state_change()
+        self.assertEqual(alarm.status, STATUS_SNOOZED)
+
+        # 3. Pre-alarm state: phone sensor state changes
+        alarm._status = STATUS_PRE_ALARM
+        alarm._active_phase = PHASE_PRE_ALARM
+        self.hass.states.set("sensor.phone_next_alarm", "unavailable")
+        await alarm._handle_mobile_alarm_state_change()
+        self.assertEqual(alarm.status, STATUS_PRE_ALARM)
+        self.assertEqual(alarm.active_phase, PHASE_PRE_ALARM)
 
     async def test_dynamic_sensor_listener_persists_after_dismiss_and_test(self) -> None:
         """Test that standing dynamic sensor listener is NOT destroyed by dismiss or test stop."""

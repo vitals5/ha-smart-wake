@@ -41,7 +41,6 @@
           "days": "Aktive Wochentage",
           "mobile_alarm_entity": "Next Alarm Sensor (Mobiltelefon)",
           "alarm_source_mode": "Weckquellen-Priorität",
-          "mobile_dismiss_sync": "Handy-Quittierung synchronisieren (Beenden am Handy beendet Smart Wake)",
           "workday_entity": "Workday-Sensor (optional)",
           "workday_only": "Nur an Werktagen auslösen",
           "calendar_entity": "Kalender-Entity (optional)",

@@ -41,7 +41,6 @@
           "days": "Aktywne dni",
           "mobile_alarm_entity": "Czujnik następnego budzika (Telefon)",
           "alarm_source_mode": "Priorytet źródła budzika",
-          "mobile_dismiss_sync": "Synchronizuj wyłączanie z telefonu (wyłączenie w telefonie wyłącza Smart Wake)",
           "workday_entity": "Sensor dni roboczych (opcjonalnie)",
           "workday_only": "Uruchamiaj tylko w dni robocze",
           "calendar_entity": "Encja kalendarza (opcjonalnie)",

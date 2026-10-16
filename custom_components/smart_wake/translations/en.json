@@ -41,7 +41,6 @@
           "days": "Active Days",
           "mobile_alarm_entity": "Next Alarm Sensor (Mobile Phone)",
           "alarm_source_mode": "Alarm Source Priority",
-          "mobile_dismiss_sync": "Synchronize Phone Dismiss (Dismissing alarm on phone dismisses Smart Wake)",
           "workday_entity": "Workday sensor entity (optional)",
           "workday_only": "Trigger on workdays only",
           "calendar_entity": "Calendar entity (optional)",
