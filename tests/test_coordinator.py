@@ -1092,6 +1092,122 @@ class TestSmartWakeCoordinator(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(alarm.status, STATUS_RINGING)
         self.assertEqual(alarm.active_phase, PHASE_MAIN_ALARM)
 
+    async def test_dynamic_sensor_listener_persists_after_dismiss_and_test(self) -> None:
+        """Test that standing dynamic sensor listener is NOT destroyed by dismiss or test stop."""
+        from homeassistant.util import dt as dt_util
+
+        now = dt_util.now()
+        target_time = now + timedelta(hours=1)
+        self.hass.states.set("sensor.phone_next_alarm", target_time.isoformat())
+
+        cfg = {
+            CONF_NAME: "Persistence Test Wecker",
+            CONF_TIME: "07:00",
+            CONF_ENABLED: True,
+            CONF_DAYS: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+            CONF_MOBILE_ALARM_ENTITY: "sensor.phone_next_alarm",
+            CONF_PRE_ALARM_ENABLED: True,
+        }
+        alarm = SmartWakeAlarm(self.hass, "test_listener_persistence", cfg)
+        await alarm.async_setup()
+        self.assertIsNotNone(alarm._unsub_dynamic_sensors)
+
+        # 1. Start pre-alarm -> listener must still be alive!
+        await alarm.async_start_pre_alarm()
+        self.assertIsNotNone(alarm._unsub_dynamic_sensors, "listener must not be killed on pre_alarm start")
+
+        # 2. Start main alarm -> listener must still be alive!
+        await alarm.async_start_main_alarm()
+        self.assertIsNotNone(alarm._unsub_dynamic_sensors, "listener must not be killed on main_alarm start")
+
+        # 3. Dismiss alarm -> listener must still be alive!
+        await alarm.async_dismiss(forced=True)
+        self.assertIsNotNone(alarm._unsub_dynamic_sensors, "listener must not be killed on dismiss")
+
+        # 4. Stop dry run test -> listener must still be alive!
+        await alarm.async_start_dry_run()
+        await alarm.async_stop_dry_run()
+        self.assertIsNotNone(alarm._unsub_dynamic_sensors, "listener must not be killed on stop_dry_run")
+
+        # 5. Verify that updating the phone sensor now STILL updates the schedule
+        new_phone_time = now + timedelta(hours=3)
+        self.hass.states.set("sensor.phone_next_alarm", new_phone_time.isoformat())
+        await alarm._handle_mobile_alarm_state_change()
+        self.assertEqual(int(alarm.next_alarm.timestamp()), int(new_phone_time.timestamp()))
+
+    async def test_parse_mobile_alarm_time_with_milliseconds_attribute(self) -> None:
+        """Test parsing Companion App 'Time in Milliseconds' attribute when state is a formatted string."""
+        from homeassistant.util import dt as dt_util
+
+        now = dt_util.now()
+        future_time = now + timedelta(hours=4)
+        epoch_ms = int(future_time.timestamp() * 1000)
+
+        # Companion App state is sometimes formatted text or local string, while milliseconds is epoch ms
+        self.hass.states.set(
+            "sensor.phone_next_alarm",
+            "Morgen 08:30",
+            attributes={"Time in Milliseconds": epoch_ms},
+        )
+
+        cfg = {
+            CONF_NAME: "Milliseconds Test Wecker",
+            CONF_TIME: "07:00",
+            CONF_ENABLED: True,
+            CONF_DAYS: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+            CONF_MOBILE_ALARM_ENTITY: "sensor.phone_next_alarm",
+            CONF_PRE_ALARM_ENABLED: False,
+        }
+        alarm = SmartWakeAlarm(self.hass, "test_ms_attr", cfg)
+        await alarm.async_setup()
+
+        self.assertEqual(alarm.active_alarm_source, "mobile")
+        self.assertEqual(int(alarm.next_alarm.timestamp()), int(future_time.timestamp()))
+
+    async def test_parse_mobile_alarm_time_with_time_only_format(self) -> None:
+        """Test parsing time-only format e.g. from input_datetime helper (e.g. '08:45')."""
+        from homeassistant.util import dt as dt_util
+
+        now = dt_util.now()
+        # Set phone sensor to 08:45
+        self.hass.states.set("sensor.phone_next_alarm", "08:45")
+
+        cfg = {
+            CONF_NAME: "Time Only Test Wecker",
+            CONF_TIME: "06:00",
+            CONF_ENABLED: True,
+            CONF_DAYS: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+            CONF_MOBILE_ALARM_ENTITY: "sensor.phone_next_alarm",
+            CONF_PRE_ALARM_ENABLED: False,
+        }
+        alarm = SmartWakeAlarm(self.hass, "test_time_only", cfg)
+        await alarm.async_setup()
+
+        self.assertEqual(alarm.active_alarm_source, "mobile")
+        self.assertEqual(alarm.next_alarm.strftime("%H:%M"), "08:45")
+
+    async def test_parse_mobile_alarm_entity_with_whitespace_and_mixed_case(self) -> None:
+        """Test configuring mobile alarm entity with leading/trailing whitespace and mixed case."""
+        from homeassistant.util import dt as dt_util
+
+        now = dt_util.now()
+        target_time = now + timedelta(hours=2)
+        self.hass.states.set("sensor.pixel_7_next_alarm", target_time.isoformat())
+
+        cfg = {
+            CONF_NAME: "Casing Test Wecker",
+            CONF_TIME: "07:00",
+            CONF_ENABLED: True,
+            CONF_DAYS: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+            CONF_MOBILE_ALARM_ENTITY: "  Sensor.Pixel_7_Next_Alarm  ",
+            CONF_PRE_ALARM_ENABLED: False,
+        }
+        alarm = SmartWakeAlarm(self.hass, "test_casing", cfg)
+        await alarm.async_setup()
+
+        self.assertEqual(alarm.active_alarm_source, "mobile")
+        self.assertEqual(int(alarm.next_alarm.timestamp()), int(target_time.timestamp()))
+
 
 if __name__ == "__main__":
     unittest.main()

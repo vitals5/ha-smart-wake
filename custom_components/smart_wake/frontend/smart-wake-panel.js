@@ -3114,8 +3114,8 @@ class SmartWakePanel extends HTMLElement {
             "Next Alarm Sensor (Mobiltelefon)",
             cfg.mobile_alarm_entity,
             "sensor.pixel_7_next_alarm",
-            "Optional: Wähle den 'Next Alarm'-Sensor deines Smartphones",
-            "sensor",
+            "Optional: Wähle den 'Next Alarm'-Sensor deines Smartphones oder ein input_datetime",
+            "sensor,input_datetime",
             false
           )}
           <div class="form-group" style="margin-top: 12px;">

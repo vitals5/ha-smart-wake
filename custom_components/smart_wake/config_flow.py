@@ -355,7 +355,7 @@ class SmartWakeOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_MOBILE_ALARM_ENTITY,
                     description={"suggested_value": self._options.get(CONF_MOBILE_ALARM_ENTITY)},
                 ): EntitySelector(
-                    EntitySelectorConfig(domain="sensor")
+                    EntitySelectorConfig(domain=["sensor", "input_datetime"])
                 ) if EntitySelector else str,
                 vol.Required(
                     CONF_ALARM_SOURCE_MODE,

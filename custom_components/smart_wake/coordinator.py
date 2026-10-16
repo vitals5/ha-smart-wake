@@ -512,6 +512,7 @@ class SmartWakeAlarm:
         self._cancel_phase_timer()
         self._cancel_dry_run()
         self._cleanup_listeners()
+        self._cleanup_dynamic_sensors_listener()
         self._cancel_fade_tasks()
         self._active_alarm_target = None
 
@@ -528,7 +529,7 @@ class SmartWakeAlarm:
     # -------------------------------------------------------------------------
     # Schedule & Next Alarm Calculation
     # -------------------------------------------------------------------------
-    async def async_recalculate_schedule(self) -> None:
+    async def async_recalculate_schedule(self, new_mobile_state: Any = None) -> None:
         """Calculate next alarm and pre-alarm times based on rules, mobile phone sensor, and source modes."""
         self._cancel_schedule()
 
@@ -583,7 +584,7 @@ class SmartWakeAlarm:
                 break
 
         # 3. Check mobile phone alarm sensor
-        mobile_dt = self._parse_mobile_alarm_time()
+        mobile_dt = self._parse_mobile_alarm_time(new_state=new_mobile_state)
         self._mobile_alarm_time = mobile_dt
         source_mode = self.alarm_source_mode
 
@@ -672,18 +673,18 @@ class SmartWakeAlarm:
 
         self._notify_update()
 
-    def _parse_mobile_alarm_time(self) -> datetime | None:
-        """Parse next alarm timestamp from mobile phone alarm sensor."""
+    def _parse_mobile_alarm_time(self, new_state: Any = None) -> datetime | None:
+        """Parse next alarm timestamp from mobile phone alarm sensor (supports state, Time in Milliseconds, epoch, and time-only)."""
         entity_id = self._config.get(CONF_MOBILE_ALARM_ENTITY)
         if not entity_id or not hasattr(self.hass, "states"):
             return None
 
-        state_obj = self.hass.states.get(entity_id)
-        if not state_obj or state_obj.state in (
+        clean_entity_id = str(entity_id).strip().lower()
+        state_obj = new_state if new_state is not None else self.hass.states.get(clean_entity_id)
+        if not state_obj or str(getattr(state_obj, "state", "")).strip().lower() in (
             STATE_UNAVAILABLE,
             STATE_UNKNOWN,
             "none",
-            "None",
             "",
             "not available",
             "not_available",
@@ -693,33 +694,69 @@ class SmartWakeAlarm:
 
         raw_val = str(state_obj.state).strip()
 
-        # 1. Standard ISO-8601 parsing
+        # 1. Standard ISO-8601 parsing via Home Assistant dt_util
         parsed_dt = dt_util.parse_datetime(raw_val)
 
-        # 2. Try parsing numeric unix timestamp
+        # Fallback to datetime.fromisoformat
+        if parsed_dt is None:
+            try:
+                parsed_dt = datetime.fromisoformat(raw_val.replace("Z", "+00:00"))
+            except Exception:
+                pass
+
+        # 2. Try parsing numeric unix timestamp from state
         if parsed_dt is None:
             try:
                 val_float = float(raw_val)
-                if val_float > 1e11:  # milliseconds
+                if val_float > 1e11:  # epoch milliseconds
                     val_float /= 1000.0
-                parsed_dt = dt_util.utc_from_timestamp(val_float)
+                if val_float > 1e8:  # valid epoch seconds (> 1973)
+                    parsed_dt = dt_util.utc_from_timestamp(val_float)
             except (ValueError, TypeError):
                 pass
 
-        # 3. Check attributes if state was not parseable
-        if parsed_dt is None and hasattr(state_obj, "attributes"):
-            for attr_key in ("Time Stamp", "timestamp", "next_alarm"):
+        # 3. Time-only format (e.g. "07:00" or "07:00:00" from input_datetime)
+        if parsed_dt is None and ":" in raw_val and len(raw_val) <= 8 and "-" not in raw_val and "T" not in raw_val:
+            try:
+                parts = raw_val.split(":")
+                h, m = int(parts[0]), int(parts[1])
+                now = dt_util.now()
+                cand = datetime.combine(now.date(), dt_time(hour=h, minute=m), tzinfo=now.tzinfo)
+                if cand <= now - timedelta(seconds=60):
+                    cand += timedelta(days=1)
+                parsed_dt = cand
+            except Exception:
+                pass
+
+        # 4. Check attributes (HA Companion App uses 'Time in Milliseconds')
+        if parsed_dt is None and hasattr(state_obj, "attributes") and state_obj.attributes:
+            for attr_key in (
+                "Time in Milliseconds",
+                "time_in_milliseconds",
+                "Time Stamp",
+                "timestamp",
+                "next_alarm",
+                "datetime",
+            ):
                 attr_val = state_obj.attributes.get(attr_key)
-                if attr_val:
+                if attr_val is not None:
                     if isinstance(attr_val, (int, float)):
-                        ts = attr_val / 1000.0 if attr_val > 1e11 else float(attr_val)
-                        parsed_dt = dt_util.utc_from_timestamp(ts)
-                        break
+                        ts = float(attr_val)
+                        if ts > 1e11:
+                            ts /= 1000.0
+                        if ts > 1e8:
+                            parsed_dt = dt_util.utc_from_timestamp(ts)
+                            break
                     elif isinstance(attr_val, datetime):
                         parsed_dt = attr_val
                         break
                     elif isinstance(attr_val, str):
                         parsed_dt = dt_util.parse_datetime(attr_val)
+                        if parsed_dt is None:
+                            try:
+                                parsed_dt = datetime.fromisoformat(attr_val.replace("Z", "+00:00"))
+                            except Exception:
+                                pass
                         if parsed_dt:
                             break
 
@@ -805,28 +842,38 @@ class SmartWakeAlarm:
 
     def _setup_dynamic_sensors_listener(self) -> None:
         """Listen to sensor changes that affect schedule recalculation."""
-        if self._unsub_dynamic_sensors is not None:
-            try:
-                self._unsub_dynamic_sensors()
-            except Exception:
-                pass
-            self._unsub_dynamic_sensors = None
+        self._cleanup_dynamic_sensors_listener()
 
         sensor_entities: list[str] = []
         for key in (CONF_WEATHER_TEMP_ENTITY, CONF_WEATHER_RAIN_ENTITY, CONF_MOBILE_ALARM_ENTITY):
             ent = self._config.get(key)
             if ent and isinstance(ent, str):
-                sensor_entities.append(ent)
+                cleaned = ent.strip().lower()
+                if cleaned and cleaned not in sensor_entities:
+                    sensor_entities.append(cleaned)
 
         if sensor_entities and hasattr(self.hass, "states"):
             @callback
             def _sensor_state_changed(event: Event) -> None:
-                entity_id = getattr(event, "data", {}).get("entity_id") if event and hasattr(event, "data") else None
-                mobile_ent = self._config.get(CONF_MOBILE_ALARM_ENTITY)
+                entity_id = (
+                    str(getattr(event, "data", {}).get("entity_id") or "").strip().lower()
+                    if event and hasattr(event, "data")
+                    else ""
+                )
+                new_state = (
+                    getattr(event, "data", {}).get("new_state")
+                    if event and hasattr(event, "data")
+                    else None
+                )
+                mobile_ent = str(self._config.get(CONF_MOBILE_ALARM_ENTITY) or "").strip().lower()
                 if entity_id and mobile_ent and entity_id == mobile_ent:
-                    self.hass.async_create_task(self._handle_mobile_alarm_state_change())
+                    self.hass.async_create_task(
+                        self._handle_mobile_alarm_state_change(new_state=new_state)
+                    )
                 elif not entity_id and mobile_ent:
-                    self.hass.async_create_task(self._handle_mobile_alarm_state_change())
+                    self.hass.async_create_task(
+                        self._handle_mobile_alarm_state_change(new_state=new_state)
+                    )
                 else:
                     self.hass.async_create_task(self.async_recalculate_schedule())
 
@@ -837,7 +884,7 @@ class SmartWakeAlarm:
             except Exception as err:
                 _LOGGER.debug("Could not attach state change tracker: %s", err)
 
-    async def _handle_mobile_alarm_state_change(self) -> None:
+    async def _handle_mobile_alarm_state_change(self, new_state: Any = None) -> None:
         """Handle state change of the mobile phone alarm sensor (supports bidirectional dismiss/snooze)."""
         if not self._enabled:
             return
@@ -846,7 +893,7 @@ class SmartWakeAlarm:
         is_active = self._status in (STATUS_PRE_ALARM, STATUS_RINGING, STATUS_SNOOZED)
 
         if is_active and sync_dismiss and self._active_alarm_target:
-            new_mobile_dt = self._parse_mobile_alarm_time()
+            new_mobile_dt = self._parse_mobile_alarm_time(new_state=new_state)
             now = dt_util.now()
 
             # Target difference: seconds between the new mobile alarm time and the active target
@@ -878,7 +925,7 @@ class SmartWakeAlarm:
                     return
 
         # If not active or after sync check, recalculate normal schedule
-        await self.async_recalculate_schedule()
+        await self.async_recalculate_schedule(new_mobile_state=new_state)
 
     def _arm_schedule_timer(self) -> None:
         """Arm exact point-in-time callback for pre-alarm or main alarm."""
@@ -1225,6 +1272,8 @@ class SmartWakeAlarm:
         # Recalculate and arm next scheduled occurrence
         await self.async_recalculate_schedule()
         self._status = STATUS_IDLE
+        if self._unsub_dynamic_sensors is None:
+            self._setup_dynamic_sensors_listener()
         self._notify_update()
         return True
 
@@ -2319,13 +2368,17 @@ class SmartWakeAlarm:
                 pass
             self._unsub_dry_run = None
 
-    def _cleanup_listeners(self) -> None:
+    def _cleanup_dynamic_sensors_listener(self) -> None:
+        """Unsubscribe dynamic standing sensor listener (weather, mobile alarm). Only on unload or re-setup."""
         if self._unsub_dynamic_sensors is not None:
             try:
                 self._unsub_dynamic_sensors()
             except Exception:
                 pass
             self._unsub_dynamic_sensors = None
+
+    def _cleanup_listeners(self) -> None:
+        """Unsubscribe active alarm cycle listeners (motion, buttons, NFC, sleep tracker)."""
         for unsub in self._unsub_listeners:
             try:
                 unsub()
