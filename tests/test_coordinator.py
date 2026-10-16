@@ -9,6 +9,11 @@ import unittest
 from tests.mock_ha import MockHomeAssistant
 
 from custom_components.smart_wake.const import (
+    ALARM_SOURCE_EARLIEST,
+    ALARM_SOURCE_FIXED_ONLY,
+    ALARM_SOURCE_MOBILE_ONLY,
+    ALARM_SOURCE_MOBILE_PRIORITY,
+    CONF_ALARM_SOURCE_MODE,
     CONF_CALENDAR_BEHAVIOR,
     CONF_CALENDAR_ENTITY,
     CONF_DAYS,
@@ -30,6 +35,7 @@ from custom_components.smart_wake.const import (
     CONF_MAIN_TTS_MEDIA_PLAYER,
     CONF_MAIN_TTS_VOLUME,
     CONF_MAX_SNOOZE_COUNT,
+    CONF_MOBILE_ALARM_ENTITY,
     CONF_NAME,
     CONF_PERSON_ENTITIES,
     CONF_PERSON_HOME_REQUIRED,
@@ -778,6 +784,179 @@ class TestSmartWakeCoordinator(unittest.IsolatedAsyncioTestCase):
         track_call(event_hold)
         await asyncio.sleep(0.01)
         self.assertEqual(alarm.status, STATUS_IDLE, "Hold click must dismiss the alarm!")
+
+    async def test_mobile_alarm_priority_mode_with_phone_alarm(self) -> None:
+        """Test mobile_priority mode uses phone alarm when available."""
+        from homeassistant.util import dt as dt_util
+
+        now = dt_util.now()
+        phone_alarm_time = now + timedelta(hours=2)
+        self.hass.states.set("sensor.phone_next_alarm", phone_alarm_time.isoformat())
+
+        cfg = {
+            CONF_NAME: "Mobile Test Wecker",
+            CONF_TIME: "08:00",
+            CONF_ENABLED: True,
+            CONF_DAYS: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+            CONF_MOBILE_ALARM_ENTITY: "sensor.phone_next_alarm",
+            CONF_ALARM_SOURCE_MODE: ALARM_SOURCE_MOBILE_PRIORITY,
+            CONF_PRE_ALARM_ENABLED: True,
+            CONF_PRE_ALARM_DURATION: 15,
+        }
+        alarm = SmartWakeAlarm(self.hass, "test_mob_1", cfg)
+        await alarm.async_recalculate_schedule()
+
+        self.assertEqual(alarm.active_alarm_source, "mobile")
+        self.assertIsNotNone(alarm.next_alarm)
+        self.assertEqual(int(alarm.next_alarm.timestamp()), int(phone_alarm_time.timestamp()))
+        self.assertEqual(alarm.pre_alarm_time, alarm.next_alarm - timedelta(minutes=15))
+
+    async def test_mobile_alarm_priority_mode_fallback_when_unavailable(self) -> None:
+        """Test mobile_priority mode falls back to fixed time when phone alarm is unavailable."""
+        self.hass.states.set("sensor.phone_next_alarm", "unavailable")
+
+        cfg = {
+            CONF_NAME: "Mobile Test Wecker",
+            CONF_TIME: "08:00",
+            CONF_ENABLED: True,
+            CONF_DAYS: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+            CONF_MOBILE_ALARM_ENTITY: "sensor.phone_next_alarm",
+            CONF_ALARM_SOURCE_MODE: ALARM_SOURCE_MOBILE_PRIORITY,
+            CONF_PRE_ALARM_ENABLED: False,
+        }
+        alarm = SmartWakeAlarm(self.hass, "test_mob_2", cfg)
+        await alarm.async_recalculate_schedule()
+
+        self.assertEqual(alarm.active_alarm_source, "fixed_fallback")
+        self.assertIsNotNone(alarm.next_alarm)
+        self.assertEqual(alarm.next_alarm.strftime("%H:%M"), "08:00")
+
+    async def test_mobile_alarm_earliest_mode(self) -> None:
+        """Test earliest mode picks whichever alarm comes first."""
+        from homeassistant.util import dt as dt_util
+
+        now = dt_util.now()
+        # Case A: Phone alarm is in 1 hour (earlier than fixed)
+        earlier_phone = now + timedelta(hours=1)
+        self.hass.states.set("sensor.phone_next_alarm", earlier_phone.isoformat())
+
+        cfg = {
+            CONF_NAME: "Earliest Test Wecker",
+            CONF_TIME: (now + timedelta(hours=3)).strftime("%H:%M"),
+            CONF_ENABLED: True,
+            CONF_DAYS: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+            CONF_MOBILE_ALARM_ENTITY: "sensor.phone_next_alarm",
+            CONF_ALARM_SOURCE_MODE: ALARM_SOURCE_EARLIEST,
+            CONF_PRE_ALARM_ENABLED: False,
+        }
+        alarm = SmartWakeAlarm(self.hass, "test_mob_earliest", cfg)
+        await alarm.async_recalculate_schedule()
+
+        self.assertEqual(alarm.active_alarm_source, "mobile")
+        self.assertEqual(int(alarm.next_alarm.timestamp()), int(earlier_phone.timestamp()))
+
+        # Case B: Phone alarm is in 5 hours (later than fixed 3 hours)
+        later_phone = now + timedelta(hours=5)
+        self.hass.states.set("sensor.phone_next_alarm", later_phone.isoformat())
+        await alarm.async_recalculate_schedule()
+
+        self.assertEqual(alarm.active_alarm_source, "fixed")
+
+    async def test_mobile_alarm_mobile_only_mode(self) -> None:
+        """Test mobile_only mode only rings when mobile alarm is present."""
+        from homeassistant.util import dt as dt_util
+
+        now = dt_util.now()
+        phone_alarm_time = now + timedelta(hours=4)
+        self.hass.states.set("sensor.phone_next_alarm", phone_alarm_time.isoformat())
+
+        cfg = {
+            CONF_NAME: "Mobile Only Wecker",
+            CONF_TIME: "07:00",
+            CONF_ENABLED: True,
+            CONF_DAYS: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+            CONF_MOBILE_ALARM_ENTITY: "sensor.phone_next_alarm",
+            CONF_ALARM_SOURCE_MODE: ALARM_SOURCE_MOBILE_ONLY,
+            CONF_PRE_ALARM_ENABLED: False,
+        }
+        alarm = SmartWakeAlarm(self.hass, "test_mob_only", cfg)
+        await alarm.async_recalculate_schedule()
+
+        self.assertEqual(alarm.active_alarm_source, "mobile")
+        self.assertIsNotNone(alarm.next_alarm)
+
+        # When phone alarm is disabled / unavailable
+        self.hass.states.set("sensor.phone_next_alarm", "none")
+        await alarm.async_recalculate_schedule()
+
+        self.assertEqual(alarm.active_alarm_source, "none")
+        self.assertIsNone(alarm.next_alarm)
+        self.assertIsNone(alarm.pre_alarm_time)
+
+    async def test_mobile_alarm_fixed_only_mode(self) -> None:
+        """Test fixed_only mode ignores mobile alarm."""
+        from homeassistant.util import dt as dt_util
+
+        now = dt_util.now()
+        phone_alarm_time = now + timedelta(hours=1)
+        self.hass.states.set("sensor.phone_next_alarm", phone_alarm_time.isoformat())
+
+        cfg = {
+            CONF_NAME: "Fixed Only Wecker",
+            CONF_TIME: "09:15",
+            CONF_ENABLED: True,
+            CONF_DAYS: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+            CONF_MOBILE_ALARM_ENTITY: "sensor.phone_next_alarm",
+            CONF_ALARM_SOURCE_MODE: ALARM_SOURCE_FIXED_ONLY,
+            CONF_PRE_ALARM_ENABLED: False,
+        }
+        alarm = SmartWakeAlarm(self.hass, "test_fixed_only", cfg)
+        await alarm.async_recalculate_schedule()
+
+        self.assertEqual(alarm.active_alarm_source, "fixed")
+        self.assertEqual(alarm.next_alarm.strftime("%H:%M"), "09:15")
+
+    async def test_mobile_alarm_sensor_state_change_listener(self) -> None:
+        """Test that updating mobile alarm sensor recalculates schedule."""
+        from homeassistant.helpers.event import async_track_state_change_event
+        from homeassistant.util import dt as dt_util
+
+        now = dt_util.now()
+        self.hass.states.set("sensor.phone_next_alarm", "unavailable")
+
+        cfg = {
+            CONF_NAME: "Listener Test Wecker",
+            CONF_TIME: "07:00",
+            CONF_ENABLED: True,
+            CONF_DAYS: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+            CONF_MOBILE_ALARM_ENTITY: "sensor.phone_next_alarm",
+            CONF_ALARM_SOURCE_MODE: ALARM_SOURCE_MOBILE_PRIORITY,
+            CONF_PRE_ALARM_ENABLED: False,
+        }
+        alarm = SmartWakeAlarm(self.hass, "test_listener", cfg)
+        await alarm.async_setup()
+
+        self.assertEqual(alarm.active_alarm_source, "fixed_fallback")
+
+        # Find registered listener for sensor.phone_next_alarm
+        track_call = None
+        for call in async_track_state_change_event.call_args_list:
+            if "sensor.phone_next_alarm" in call[0][1]:
+                track_call = call[0][2]
+                break
+        self.assertIsNotNone(track_call, "mobile alarm state change listener should be registered")
+
+        # Now simulate companion app updating the sensor
+        new_phone_time = now + timedelta(hours=2)
+        self.hass.states.set("sensor.phone_next_alarm", new_phone_time.isoformat())
+        event = MagicMock()
+        event.data = {"entity_id": "sensor.phone_next_alarm"}
+        track_call(event)
+
+        # Give async tasks a moment to run
+        await asyncio.sleep(0.01)
+        self.assertEqual(alarm.active_alarm_source, "mobile")
+        self.assertEqual(int(alarm.next_alarm.timestamp()), int(new_phone_time.timestamp()))
 
 
 if __name__ == "__main__":

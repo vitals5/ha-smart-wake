@@ -84,6 +84,12 @@ class TestSmartWakeEntities(unittest.IsolatedAsyncioTestCase):
 
         next_alarm_sensor = SmartWakeNextAlarmSensor(self.alarm, self.entry)
         self.assertIsNone(next_alarm_sensor.native_value)
+        attrs = next_alarm_sensor.extra_state_attributes
+        self.assertIn("alarm_source", attrs)
+        self.assertEqual(attrs["alarm_source"], "fixed")
+        self.assertIn("alarm_source_mode", attrs)
+        self.assertIn("mobile_alarm_entity", attrs)
+        self.assertIn("mobile_alarm_time", attrs)
 
         phase_sensor = SmartWakeActivePhaseSensor(self.alarm, self.entry)
         self.assertEqual(phase_sensor.native_value, "none")

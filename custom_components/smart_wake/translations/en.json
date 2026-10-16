@@ -39,6 +39,8 @@
         "data": {
           "time": "Target Time (HH:MM)",
           "days": "Active Days",
+          "mobile_alarm_entity": "Next Alarm Sensor (Mobile Phone)",
+          "alarm_source_mode": "Alarm Source Priority",
           "workday_entity": "Workday sensor entity (optional)",
           "workday_only": "Trigger on workdays only",
           "calendar_entity": "Calendar entity (optional)",
@@ -173,6 +175,16 @@
       },
       "pre_alarm_duration": {
         "name": "Pre-Alarm Duration"
+      }
+    }
+  },
+  "selector": {
+    "alarm_source_mode": {
+      "options": {
+        "mobile_priority": "Phone alarm has priority, fixed time fallback (recommended)",
+        "earliest": "Both active – earliest alarm wins",
+        "mobile_only": "Phone alarm only",
+        "fixed_only": "Fixed alarm time only"
       }
     }
   }

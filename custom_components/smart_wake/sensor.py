@@ -160,6 +160,10 @@ class SmartWakeNextAlarmSensor(SmartWakeBaseSensor):
             "offset_reasons": self._alarm.offset_reasons,
             "active_days": self._alarm.days,
             "snooze_until": self._alarm.snooze_until.isoformat() if self._alarm.snooze_until else None,
+            "alarm_source": getattr(self._alarm, "active_alarm_source", "fixed"),
+            "alarm_source_mode": getattr(self._alarm, "alarm_source_mode", "mobile_priority"),
+            "mobile_alarm_entity": getattr(self._alarm, "mobile_alarm_entity", None),
+            "mobile_alarm_time": self._alarm.mobile_alarm_time.isoformat() if getattr(self._alarm, "mobile_alarm_time", None) else None,
         }
 
 

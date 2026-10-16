@@ -39,6 +39,8 @@
         "data": {
           "time": "Ora target (HH:MM)",
           "days": "Giorni attivi",
+          "mobile_alarm_entity": "Sensore prossima sveglia (Telefono cellulare)",
+          "alarm_source_mode": "Priorità sorgente sveglia",
           "workday_entity": "Sensore giorni lavorativi (opzionale)",
           "workday_only": "Attiva solo nei giorni lavorativi",
           "calendar_entity": "Entità calendario (opzionale)",
@@ -173,6 +175,16 @@
       },
       "pre_alarm_duration": {
         "name": "Durata pre-allarme"
+      }
+    }
+  },
+  "selector": {
+    "alarm_source_mode": {
+      "options": {
+        "mobile_priority": "Sveglia cellulare prioritaria, orario fisso di riserva (consigliato)",
+        "earliest": "Entrambe attive – la più precoce si attiva",
+        "mobile_only": "Solo sveglia cellulare",
+        "fixed_only": "Solo orario fisso"
       }
     }
   }

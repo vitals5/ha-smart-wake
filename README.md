@@ -67,6 +67,15 @@ Smart Wake is built on Home Assistant's modern `config_flow` architecture:
 
 Before triggering, each alarm evaluates a smart condition and offset pipeline:
 
+* **Mobile Phone Alarm Trigger & Companion App Synchronization:**
+  * Seamlessly syncs with your Android or iOS smartphone alarm via the Home Assistant Companion App (`sensor.<phone>_next_alarm`).
+  * Live state-tracking listens for changes in real-time, automatically recalculating pre-alarm and main alarm schedules.
+  * Robust parsing supports ISO-8601 strings and UNIX timestamps, and gracefully handles `unavailable`, `unknown`, `not available`, or `none` when no phone alarm is set.
+  * **4 Configurable Alarm Source Priority Modes:**
+    1. **Phone Priority (`mobile_priority`, Recommended):** Phone alarm takes priority when active; the fixed schedule automatically serves as a reliable fallback.
+    2. **Earliest Alarm Wins (`earliest`):** Compares both phone alarm and fixed schedule and triggers whichever is earlier.
+    3. **Phone Only (`mobile_only`):** Strictly wakes according to your phone. Remains idle (`Wartet auf Handy-Wecker`) when no phone alarm is set.
+    4. **Fixed Schedule Only (`fixed_only`):** Ignores phone alarms and triggers exclusively on the configured fixed schedule.
 * **Workday & Calendar Filters:**
   * Direct integration with `binary_sensor.workday_sensor` (only ring on business days).
   * HA Calendar integration (`calendar.*`): Trigger only when calendar events match, or skip on holidays/vacation days.

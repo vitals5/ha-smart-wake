@@ -39,6 +39,8 @@
         "data": {
           "time": "Ziel-Weckzeit (HH:MM)",
           "days": "Aktive Wochentage",
+          "mobile_alarm_entity": "Next Alarm Sensor (Mobiltelefon)",
+          "alarm_source_mode": "Weckquellen-Priorität",
           "workday_entity": "Workday-Sensor (optional)",
           "workday_only": "Nur an Werktagen auslösen",
           "calendar_entity": "Kalender-Entity (optional)",
@@ -173,6 +175,16 @@
       },
       "pre_alarm_duration": {
         "name": "Pre-Alarm Dauer"
+      }
+    }
+  },
+  "selector": {
+    "alarm_source_mode": {
+      "options": {
+        "mobile_priority": "Handy-Wecker hat Vorrang, feste Zeit nur als Fallback (empfohlen)",
+        "earliest": "Beide aktiv – wer zuerst kommt, gewinnt",
+        "mobile_only": "Nur Handy-Wecker",
+        "fixed_only": "Nur feste Weckzeit"
       }
     }
   }

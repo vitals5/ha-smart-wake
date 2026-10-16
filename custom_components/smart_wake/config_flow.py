@@ -136,6 +136,8 @@ from .const import (
     CONF_MAIN_TTS_MESSAGE,
     CONF_MAIN_TTS_VOLUME,
     CONF_MAX_SNOOZE_COUNT,
+    CONF_MOBILE_ALARM_ENTITY,
+    CONF_ALARM_SOURCE_MODE,
     CONF_NAME,
     CONF_PERSON_ENTITIES,
     CONF_PERSON_HOME_REQUIRED,
@@ -194,6 +196,11 @@ from .const import (
     DEFAULT_WEATHER_TEMP_OFFSET,
     DEFAULT_WEATHER_TEMP_THRESHOLD,
     DEFAULT_WORKDAY_ONLY,
+    ALARM_SOURCE_MOBILE_PRIORITY,
+    ALARM_SOURCE_EARLIEST,
+    ALARM_SOURCE_MOBILE_ONLY,
+    ALARM_SOURCE_FIXED_ONLY,
+    DEFAULT_ALARM_SOURCE_MODE,
     DOMAIN,
     WEEKDAY_NAMES_DE,
     WEEKDAYS,
@@ -210,6 +217,13 @@ CALENDAR_BEHAVIOR_OPTIONS = [
     {"value": CALENDAR_BEHAVIOR_NONE, "label": "Deaktiviert (Immer wecken)"},
     {"value": CALENDAR_BEHAVIOR_ONLY_IF_EVENT, "label": "Nur wecken wenn Termin aktiv ist"},
     {"value": CALENDAR_BEHAVIOR_SKIP_IF_EVENT, "label": "Wecker überspringen wenn Termin aktiv ist (Urlaub/Ferien)"},
+]
+
+ALARM_SOURCE_MODE_OPTIONS = [
+    {"value": ALARM_SOURCE_MOBILE_PRIORITY, "label": "Handy-Wecker hat Vorrang, feste Zeit nur als Fallback (empfohlen)"},
+    {"value": ALARM_SOURCE_EARLIEST, "label": "Beide aktiv – wer zuerst kommt, gewinnt"},
+    {"value": ALARM_SOURCE_MOBILE_ONLY, "label": "Nur Handy-Wecker"},
+    {"value": ALARM_SOURCE_FIXED_ONLY, "label": "Nur feste Weckzeit"},
 ]
 
 
@@ -335,6 +349,23 @@ class SmartWakeOptionsFlowHandler(config_entries.OptionsFlow):
                         mode=SelectSelectorMode.LIST,
                     )
                 ) if SelectSelector else list,
+                vol.Optional(
+                    CONF_MOBILE_ALARM_ENTITY,
+                    description={"suggested_value": self._options.get(CONF_MOBILE_ALARM_ENTITY)},
+                ): EntitySelector(
+                    EntitySelectorConfig(domain="sensor")
+                ) if EntitySelector else str,
+                vol.Required(
+                    CONF_ALARM_SOURCE_MODE,
+                    default=self._options.get(
+                        CONF_ALARM_SOURCE_MODE, DEFAULT_ALARM_SOURCE_MODE
+                    ),
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=ALARM_SOURCE_MODE_OPTIONS,
+                        mode=SelectSelectorMode.LIST,
+                    )
+                ) if SelectSelector else str,
                 vol.Optional(
                     CONF_WORKDAY_ENTITY,
                     description={"suggested_value": self._options.get(CONF_WORKDAY_ENTITY)},

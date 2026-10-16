@@ -39,6 +39,8 @@
         "data": {
           "time": "Heure cible (HH:MM)",
           "days": "Jours actifs",
+          "mobile_alarm_entity": "Capteur du prochain réveil (Téléphone)",
+          "alarm_source_mode": "Priorité de la source d'alarme",
           "workday_entity": "Capteur de jours ouvrés (optionnel)",
           "workday_only": "Déclencher uniquement les jours ouvrés",
           "calendar_entity": "Calendrier (optionnel)",
@@ -173,6 +175,16 @@
       },
       "pre_alarm_duration": {
         "name": "Durée pré-alarme"
+      }
+    }
+  },
+  "selector": {
+    "alarm_source_mode": {
+      "options": {
+        "mobile_priority": "Alarme mobile prioritaire, heure fixe en secours (recommandé)",
+        "earliest": "Les deux actifs – le plus tôt se déclenche",
+        "mobile_only": "Alarme mobile uniquement",
+        "fixed_only": "Heure fixe uniquement"
       }
     }
   }

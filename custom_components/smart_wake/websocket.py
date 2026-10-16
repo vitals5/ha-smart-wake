@@ -64,6 +64,8 @@ from .const import (
     CONF_MAIN_TTS_ENABLED,
     CONF_MAIN_TTS_MEDIA_PLAYER,
     CONF_MAIN_TTS_VOLUME,
+    CONF_MOBILE_ALARM_ENTITY,
+    CONF_ALARM_SOURCE_MODE,
     CONF_NAME,
     CONF_PERSON_ENTITIES,
     CONF_PERSON_HOME_REQUIRED,
@@ -76,6 +78,7 @@ from .const import (
     CONF_WEATHER_TEMP_ENTITY,
     CONF_WORKDAY_ENTITY,
     CONF_WORKDAY_ONLY,
+    DEFAULT_ALARM_SOURCE_MODE,
     DEFAULT_MAIN_TTS_DELAY,
     DEFAULT_MAIN_TTS_VOLUME,
     DOMAIN,
@@ -122,6 +125,8 @@ def _serialize_alarm(alarm: SmartWakeAlarm) -> dict[str, Any]:
     elif alarm.enabled and alarm.next_alarm:
         countdown_secs = max(0.0, (alarm.next_alarm - now).total_seconds())
         countdown_text = _format_countdown(countdown_secs)
+    elif alarm.enabled and getattr(alarm, "alarm_source_mode", "") == "mobile_only":
+        countdown_text = "Wartet auf Handy-Wecker"
 
     cfg = alarm.config
     return {
@@ -135,6 +140,9 @@ def _serialize_alarm(alarm: SmartWakeAlarm) -> dict[str, Any]:
         "next_alarm": alarm.next_alarm.isoformat() if alarm.next_alarm else None,
         "pre_alarm_time": alarm.pre_alarm_time.isoformat() if alarm.pre_alarm_time else None,
         "snooze_until": alarm.snooze_until.isoformat() if alarm.snooze_until else None,
+        "alarm_source": getattr(alarm, "active_alarm_source", "fixed"),
+        "alarm_source_mode": getattr(alarm, "alarm_source_mode", DEFAULT_ALARM_SOURCE_MODE),
+        "mobile_alarm_time": alarm.mobile_alarm_time.isoformat() if getattr(alarm, "mobile_alarm_time", None) else None,
         "has_anti_cheat": alarm.has_anti_cheat_configured(),
         "anti_cheat_fulfilled": alarm.is_anti_cheat_fulfilled(),
         "countdown_seconds": countdown_secs,
@@ -154,6 +162,8 @@ def _serialize_alarm(alarm: SmartWakeAlarm) -> dict[str, Any]:
         "config_summary": {
             "workday_only": cfg.get(CONF_WORKDAY_ONLY, False),
             "workday_entity": cfg.get(CONF_WORKDAY_ENTITY),
+            "mobile_alarm_entity": cfg.get(CONF_MOBILE_ALARM_ENTITY),
+            "alarm_source_mode": cfg.get(CONF_ALARM_SOURCE_MODE, DEFAULT_ALARM_SOURCE_MODE),
             "person_entities": cfg.get(CONF_PERSON_ENTITIES, []),
             "person_home_required": cfg.get(CONF_PERSON_HOME_REQUIRED, False),
             "weather_temp_entity": cfg.get(CONF_WEATHER_TEMP_ENTITY),

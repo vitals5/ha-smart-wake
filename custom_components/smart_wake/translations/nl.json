@@ -39,6 +39,8 @@
         "data": {
           "time": "Doeltijd (UU:MM)",
           "days": "Actieve dagen",
+          "mobile_alarm_entity": "Volgende wekkersensor (Mobiele telefoon)",
+          "alarm_source_mode": "Prioriteit wekbron",
           "workday_entity": "Werkdag-sensor (optioneel)",
           "workday_only": "Alleen op werkdagen activeren",
           "calendar_entity": "Kalender-entiteit (optioneel)",
@@ -173,6 +175,16 @@
       },
       "pre_alarm_duration": {
         "name": "Pre-alarmduur"
+      }
+    }
+  },
+  "selector": {
+    "alarm_source_mode": {
+      "options": {
+        "mobile_priority": "Mobiele wekker heeft voorrang, vaste tijd als fallback (aanbevolen)",
+        "earliest": "Beide actief – wie het eerst komt, wint",
+        "mobile_only": "Alleen mobiele wekker",
+        "fixed_only": "Alleen vaste wektijd"
       }
     }
   }

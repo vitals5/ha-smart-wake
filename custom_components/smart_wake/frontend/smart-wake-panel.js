@@ -801,6 +801,62 @@ const PANEL_STYLES = `
           color: #cfd8dc;
         }
 
+        .radio-options-group {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin-top: 6px;
+        }
+
+        .radio-option {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          padding: 10px 14px;
+          border-radius: 8px;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .radio-option:hover {
+          background: rgba(255, 255, 255, 0.06);
+          border-color: rgba(3, 169, 244, 0.4);
+        }
+
+        .radio-option input[type="radio"] {
+          margin-top: 2px;
+          accent-color: var(--primary-color, #03a9f4);
+          cursor: pointer;
+          width: 16px;
+          height: 16px;
+          flex-shrink: 0;
+        }
+
+        .radio-option:has(input:checked) {
+          background: rgba(3, 169, 244, 0.08);
+          border-color: var(--primary-color, #03a9f4);
+        }
+
+        .radio-label {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .radio-title {
+          font-size: 13px;
+          font-weight: 600;
+          color: var(--primary-text-color, #eceff1);
+        }
+
+        .radio-desc {
+          font-size: 11px;
+          color: var(--secondary-text-color, #90a4ae);
+          line-height: 1.35;
+        }
+
         .days-selector {
           display: flex;
           gap: 6px;
@@ -1207,6 +1263,9 @@ class SmartWakePanel extends HTMLElement {
       a.is_dry_run,
       cfg.workday_only,
       cfg.person_home_required,
+      cfg.mobile_alarm_entity,
+      a.alarm_source,
+      a.alarm_source_mode,
       cfg.escalation_delay,
       cfg.escalation_volume,
     ].join(":");
@@ -1232,14 +1291,16 @@ class SmartWakePanel extends HTMLElement {
       this._updateCountdowns();
       this._alarms.forEach((alarm) => {
         // Dynamic time updates
+        const isMobile = alarm.alarm_source === "mobile" && alarm.next_alarm;
+        const displayTime = isMobile ? this._formatTime(alarm.next_alarm) : alarm.time;
         const timeEl = this.shadowRoot.getElementById(`time-${alarm.id}`);
         if (timeEl) {
-          const text = `${alarm.time} Uhr`;
+          const text = isMobile ? `${displayTime} Uhr 📱` : `${displayTime} Uhr`;
           if (timeEl.textContent !== text) timeEl.textContent = text;
         }
         const tlP2 = this.shadowRoot.getElementById(`timeline-p2-${alarm.id}`);
-        if (tlP2 && tlP2.textContent !== alarm.time) {
-          tlP2.textContent = alarm.time;
+        if (tlP2 && tlP2.textContent !== displayTime) {
+          tlP2.textContent = displayTime;
         }
         const tlP1 = this.shadowRoot.getElementById(`timeline-p1-${alarm.id}`);
         if (tlP1) {
@@ -1574,6 +1635,8 @@ class SmartWakePanel extends HTMLElement {
         time: alarm ? alarm.time : "06:30",
         enabled: alarm ? Boolean(alarm.enabled) : true,
         days: alarm && alarm.days ? [...alarm.days] : ["mon", "tue", "wed", "thu", "fri"],
+        mobile_alarm_entity: rawCfg.mobile_alarm_entity ?? sumCfg.mobile_alarm_entity ?? "",
+        alarm_source_mode: rawCfg.alarm_source_mode ?? sumCfg.alarm_source_mode ?? "mobile_priority",
 
         // Conditions
         workday_only: Boolean(rawCfg.workday_only ?? sumCfg.workday_only ?? false),
@@ -1662,6 +1725,8 @@ class SmartWakePanel extends HTMLElement {
         time: "06:30",
         enabled: true,
         days: ["mon", "tue", "wed", "thu", "fri"],
+        mobile_alarm_entity: "",
+        alarm_source_mode: "mobile_priority",
 
         workday_only: false,
         workday_entity: "binary_sensor.workday_sensor",
@@ -1797,6 +1862,9 @@ class SmartWakePanel extends HTMLElement {
     if (getVal("f_name") !== undefined) this._editConfig.name = getVal("f_name");
     if (getVal("f_time") !== undefined) this._editConfig.time = getVal("f_time");
     if (getChecked("f_enabled") !== undefined) this._editConfig.enabled = getChecked("f_enabled");
+    if (getVal("f_mobile_alarm_entity") !== undefined) this._editConfig.mobile_alarm_entity = getVal("f_mobile_alarm_entity");
+    const sourceRadio = root.querySelector("input[name='f_alarm_source_mode']:checked");
+    if (sourceRadio) this._editConfig.alarm_source_mode = sourceRadio.value;
 
     // Conditions Tab
     if (getChecked("f_workday_only") !== undefined) this._editConfig.workday_only = getChecked("f_workday_only");
@@ -1886,6 +1954,8 @@ class SmartWakePanel extends HTMLElement {
         time: this._editConfig.time,
         enabled: Boolean(this._editConfig.enabled),
         days: this._editConfig.days,
+        mobile_alarm_entity: this._editConfig.mobile_alarm_entity || null,
+        alarm_source_mode: this._editConfig.alarm_source_mode || "mobile_priority",
 
         workday_only: Boolean(this._editConfig.workday_only),
         workday_entity: this._editConfig.workday_entity || null,
@@ -2774,6 +2844,8 @@ class SmartWakePanel extends HTMLElement {
 
     const cfg = alarm.config_summary || {};
     const daysStr = (alarm.days || []).map((d) => d.toUpperCase()).join(", ");
+    const isMobile = alarm.alarm_source === "mobile" && alarm.next_alarm;
+    const displayTime = isMobile ? this._formatTime(alarm.next_alarm) : alarm.time;
 
     return `
       <div class="alarm-card">
@@ -2793,7 +2865,7 @@ class SmartWakePanel extends HTMLElement {
         </div>
 
         <div class="time-row">
-          <div class="big-time" id="time-${alarm.id}" style="cursor: pointer;" title="Weckzeit ändern (Klicken öffnet Einstellungen)">${alarm.time} Uhr</div>
+          <div class="big-time" id="time-${alarm.id}" style="cursor: pointer;" title="Weckzeit ändern (Klicken öffnet Einstellungen)">${isMobile ? `${displayTime} Uhr 📱` : `${alarm.time} Uhr`}</div>
           <div class="countdown-chip" id="countdown-${alarm.id}">
             ⏳ ${alarm.countdown_text}
           </div>
@@ -2803,6 +2875,15 @@ class SmartWakePanel extends HTMLElement {
           <div class="tag">📅 Tage: ${daysStr}</div>
           ${cfg.workday_only ? `<div class="tag workday">💼 Nur Werktage: AN</div>` : ""}
           ${cfg.person_home_required ? `<div class="tag">👤 Anwesenheit: Erforderlich</div>` : ""}
+          ${
+            alarm.alarm_source === "mobile" && alarm.next_alarm
+              ? `<div class="tag highlight">📱 Handy-Wecker aktiv (${this._formatTime(alarm.next_alarm)} Uhr)</div>`
+              : (alarm.alarm_source_mode === "mobile_only" || cfg.alarm_source_mode === "mobile_only")
+              ? `<div class="tag">📱 Handy-Wecker: Wartet auf Alarm</div>`
+              : (cfg.mobile_alarm_entity && (alarm.alarm_source_mode === "mobile_priority" || cfg.alarm_source_mode === "mobile_priority"))
+              ? `<div class="tag">📱 Handy-Wecker: Nicht aktiv (Fallback: ${alarm.time} Uhr)</div>`
+              : ""
+          }
           ${
             alarm.dynamic_offset_minutes > 0
               ? `<div class="tag highlight">❄️ Wetter-Offset: -${alarm.dynamic_offset_minutes} Min (${alarm.offset_reasons.join(", ")})</div>`
@@ -2818,7 +2899,7 @@ class SmartWakePanel extends HTMLElement {
             <div class="timeline-desc">Phase 1: Pre-Alarm (${alarm.pre_alarm_duration} Min sanftes Erwachen)</div>
           </div>
           <div class="timeline-item">
-            <div class="timeline-time" id="timeline-p2-${alarm.id}">${alarm.time}</div>
+            <div class="timeline-time" id="timeline-p2-${alarm.id}">${displayTime}</div>
             <div class="timeline-dot p2"></div>
             <div class="timeline-desc">Phase 2: Hauptalarm (Audio Fade-in + TTS Morgenbriefing)</div>
           </div>
@@ -3021,6 +3102,50 @@ class SmartWakePanel extends HTMLElement {
               ).join("")}
             </div>
             <span class="form-hint">Klicke auf die Tage, an denen der Wecker klingeln soll</span>
+          </div>
+
+          <div class="form-section-title" style="margin-top: 18px;">📱 Handy-Wecker Synchronisation (Companion App)</div>
+          ${this._renderEntityField(
+            "f_mobile_alarm_entity",
+            "Next Alarm Sensor (Mobiltelefon)",
+            cfg.mobile_alarm_entity,
+            "sensor.pixel_7_next_alarm",
+            "Optional: Wähle den 'Next Alarm'-Sensor deines Smartphones",
+            "sensor",
+            false
+          )}
+          <div class="form-group" style="margin-top: 12px;">
+            <label class="form-label">Weckquellen-Priorität</label>
+            <div class="radio-options-group">
+              <label class="radio-option">
+                <input type="radio" name="f_alarm_source_mode" value="mobile_priority" ${(!cfg.alarm_source_mode || cfg.alarm_source_mode === "mobile_priority") ? "checked" : ""}>
+                <div class="radio-label">
+                  <span class="radio-title">Handy-Wecker hat Vorrang, feste Zeit nur als Fallback (empfohlen)</span>
+                  <span class="radio-desc">Wenn ein Wecker auf dem Handy gestellt ist, wird diese Zeit verwendet. Ist kein Handy-Wecker aktiv, gilt die oben eingestellte feste Zeit.</span>
+                </div>
+              </label>
+              <label class="radio-option">
+                <input type="radio" name="f_alarm_source_mode" value="earliest" ${cfg.alarm_source_mode === "earliest" ? "checked" : ""}>
+                <div class="radio-label">
+                  <span class="radio-title">Beide aktiv – wer zuerst kommt, gewinnt</span>
+                  <span class="radio-desc">Vergleicht Handy-Wecker und feste Zeit und löst zum früheren Zeitpunkt aus.</span>
+                </div>
+              </label>
+              <label class="radio-option">
+                <input type="radio" name="f_alarm_source_mode" value="mobile_only" ${cfg.alarm_source_mode === "mobile_only" ? "checked" : ""}>
+                <div class="radio-label">
+                  <span class="radio-title">Nur Handy-Wecker</span>
+                  <span class="radio-desc">Löst nur aus, wenn auf dem Handy ein Wecker aktiv ist. Ohne Handy-Wecker bleibt der Alarm inaktiv.</span>
+                </div>
+              </label>
+              <label class="radio-option">
+                <input type="radio" name="f_alarm_source_mode" value="fixed_only" ${cfg.alarm_source_mode === "fixed_only" ? "checked" : ""}>
+                <div class="radio-label">
+                  <span class="radio-title">Nur feste Weckzeit</span>
+                  <span class="radio-desc">Ignoriert den Handy-Wecker und weckt ausschließlich zur oben eingestellten festen Uhrzeit.</span>
+                </div>
+              </label>
+            </div>
           </div>
         `;
 

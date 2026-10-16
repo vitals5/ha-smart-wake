@@ -39,6 +39,8 @@
         "data": {
           "time": "Hora objetivo (HH:MM)",
           "days": "Días activos",
+          "mobile_alarm_entity": "Sensor de próxima alarma (Móvil)",
+          "alarm_source_mode": "Prioridad de fuente de alarma",
           "workday_entity": "Sensor de días laborables (opcional)",
           "workday_only": "Activar solo en días laborables",
           "calendar_entity": "Entidad de calendario (opcional)",
@@ -173,6 +175,16 @@
       },
       "pre_alarm_duration": {
         "name": "Duración de pre-alarma"
+      }
+    }
+  },
+  "selector": {
+    "alarm_source_mode": {
+      "options": {
+        "mobile_priority": "Alarma móvil prioritaria, hora fija como respaldo (recomendado)",
+        "earliest": "Ambas activas – la más temprana se activa",
+        "mobile_only": "Solo alarma del móvil",
+        "fixed_only": "Solo hora fija"
       }
     }
   }

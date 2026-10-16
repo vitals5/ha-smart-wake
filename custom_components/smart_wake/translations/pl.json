@@ -39,6 +39,8 @@
         "data": {
           "time": "Godzina docelowa (GG:MM)",
           "days": "Aktywne dni",
+          "mobile_alarm_entity": "Czujnik następnego budzika (Telefon)",
+          "alarm_source_mode": "Priorytet źródła budzika",
           "workday_entity": "Sensor dni roboczych (opcjonalnie)",
           "workday_only": "Uruchamiaj tylko w dni robocze",
           "calendar_entity": "Encja kalendarza (opcjonalnie)",
@@ -173,6 +175,16 @@
       },
       "pre_alarm_duration": {
         "name": "Czas przed-alarmu"
+      }
+    }
+  },
+  "selector": {
+    "alarm_source_mode": {
+      "options": {
+        "mobile_priority": "Budzik telefonu ma priorytet, stały czas awaryjny (zalecane)",
+        "earliest": "Oba aktywne – wcześniejszy wygrywa",
+        "mobile_only": "Tylko budzik telefonu",
+        "fixed_only": "Tylko stała godzina"
       }
     }
   }

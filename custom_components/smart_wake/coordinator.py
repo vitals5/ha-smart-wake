@@ -116,6 +116,8 @@ from .const import (
     CONF_MAIN_TTS_DELAY,
     CONF_MAIN_TTS_VOLUME,
     CONF_MAX_SNOOZE_COUNT,
+    CONF_MOBILE_ALARM_ENTITY,
+    CONF_ALARM_SOURCE_MODE,
     CONF_NAME,
     CONF_PERSON_ENTITIES,
     CONF_PERSON_HOME_REQUIRED,
@@ -141,6 +143,11 @@ from .const import (
     CONF_WEATHER_TEMP_THRESHOLD,
     CONF_WORKDAY_ENTITY,
     CONF_WORKDAY_ONLY,
+    ALARM_SOURCE_MOBILE_PRIORITY,
+    ALARM_SOURCE_EARLIEST,
+    ALARM_SOURCE_MOBILE_ONLY,
+    ALARM_SOURCE_FIXED_ONLY,
+    DEFAULT_ALARM_SOURCE_MODE,
     DEFAULT_DAYS,
     DEFAULT_DISMISS_POWER_THRESHOLD,
     DEFAULT_ESCALATION_COVER_POSITION,
@@ -237,6 +244,7 @@ class SmartWakeAlarm:
         self._unsub_schedule: CALLBACK_TYPE | None = None
         self._unsub_phase_timer: CALLBACK_TYPE | None = None
         self._unsub_dry_run: CALLBACK_TYPE | None = None
+        self._unsub_dynamic_sensors: CALLBACK_TYPE | None = None
         self._unsub_listeners: list[CALLBACK_TYPE] = []
         self._fade_tasks: list[asyncio.Task] = []
         self._tts_task: asyncio.Task | None = None
@@ -251,9 +259,33 @@ class SmartWakeAlarm:
         self._anti_cheat_nfc_scanned: bool = False
         self._snooze_until: datetime | None = None
 
+        # Mobile alarm tracking & source
+        self._mobile_alarm_time: datetime | None = None
+        self._active_alarm_source: str = "fixed"
+
     # -------------------------------------------------------------------------
     # Properties
     # -------------------------------------------------------------------------
+    @property
+    def mobile_alarm_entity(self) -> str | None:
+        """Return configured mobile alarm sensor entity ID."""
+        return self._config.get(CONF_MOBILE_ALARM_ENTITY)
+
+    @property
+    def alarm_source_mode(self) -> str:
+        """Return configured alarm source mode."""
+        return self._config.get(CONF_ALARM_SOURCE_MODE, DEFAULT_ALARM_SOURCE_MODE)
+
+    @property
+    def mobile_alarm_time(self) -> datetime | None:
+        """Return parsed next mobile phone alarm datetime."""
+        return self._mobile_alarm_time
+
+    @property
+    def active_alarm_source(self) -> str:
+        """Return active alarm source: 'mobile', 'fixed', 'fixed_fallback', or 'none'."""
+        return self._active_alarm_source
+
     @property
     def name(self) -> str:
         """Return the alarm instance name."""
@@ -481,13 +513,14 @@ class SmartWakeAlarm:
         self._enabled = bool(self._config.get(CONF_ENABLED, self._enabled))
         self._time_str = self._config.get(CONF_TIME, self._time_str)
         self._days = list(self._config.get(CONF_DAYS, self._days))
+        self._setup_dynamic_sensors_listener()
         self.hass.async_create_task(self.async_recalculate_schedule())
 
     # -------------------------------------------------------------------------
     # Schedule & Next Alarm Calculation
     # -------------------------------------------------------------------------
     async def async_recalculate_schedule(self) -> None:
-        """Calculate next alarm and pre-alarm times based on rules and sensors."""
+        """Calculate next alarm and pre-alarm times based on rules, mobile phone sensor, and source modes."""
         self._cancel_schedule()
 
         if not self._enabled:
@@ -495,6 +528,8 @@ class SmartWakeAlarm:
             self._pre_alarm_time = None
             self._dynamic_offset_minutes = 0
             self._offset_reasons = []
+            self._active_alarm_source = "none"
+            self._mobile_alarm_time = None
             self._notify_update()
             return
 
@@ -509,9 +544,9 @@ class SmartWakeAlarm:
         pre_alarm_enabled = self._config.get(CONF_PRE_ALARM_ENABLED, DEFAULT_PRE_ALARM_ENABLED)
         pre_alarm_duration = self.pre_alarm_duration if pre_alarm_enabled else 0
 
-        # 2. Find next matching active day (check up to 8 days in advance)
-        found_target: datetime | None = None
-        found_pre_alarm: datetime | None = None
+        # 2. Compute candidate for fixed alarm schedule (check up to 8 days in advance)
+        fixed_target: datetime | None = None
+        fixed_pre_alarm: datetime | None = None
 
         for day_offset in range(8):
             candidate_date = (now + timedelta(days=day_offset)).date()
@@ -531,22 +566,94 @@ class SmartWakeAlarm:
             shifted_target = candidate_target - timedelta(minutes=offset_mins)
             shifted_pre_alarm = shifted_target - timedelta(minutes=pre_alarm_duration)
 
-            # Determine check threshold: if pre-alarm enabled, must be in future;
-            # otherwise shifted_target must be in future.
             threshold = shifted_pre_alarm if pre_alarm_enabled else shifted_target
 
             if threshold > now:
-                found_target = shifted_target
-                found_pre_alarm = shifted_pre_alarm
+                fixed_target = shifted_target
+                fixed_pre_alarm = shifted_pre_alarm
                 break
 
-        self._next_alarm = found_target
-        self._pre_alarm_time = found_pre_alarm if pre_alarm_enabled else found_target
+        # 3. Check mobile phone alarm sensor
+        mobile_dt = self._parse_mobile_alarm_time()
+        self._mobile_alarm_time = mobile_dt
+        source_mode = self.alarm_source_mode
+
+        mobile_target: datetime | None = None
+        mobile_pre_alarm: datetime | None = None
+        if mobile_dt:
+            shifted_mob_target = mobile_dt - timedelta(minutes=offset_mins)
+            shifted_mob_pre = shifted_mob_target - timedelta(minutes=pre_alarm_duration)
+            mob_threshold = shifted_mob_pre if pre_alarm_enabled else shifted_mob_target
+
+            if mob_threshold > now:
+                mobile_target = shifted_mob_target
+                mobile_pre_alarm = shifted_mob_pre
+            elif shifted_mob_target > now:
+                # Target is in the future, start pre-alarm immediately
+                mobile_target = shifted_mob_target
+                mobile_pre_alarm = now
+
+        chosen_target: datetime | None = None
+        chosen_pre_alarm: datetime | None = None
+        chosen_source = "fixed"
+
+        if source_mode == ALARM_SOURCE_FIXED_ONLY:
+            chosen_target = fixed_target
+            chosen_pre_alarm = fixed_pre_alarm
+            chosen_source = "fixed"
+
+        elif source_mode == ALARM_SOURCE_MOBILE_ONLY:
+            if mobile_target:
+                chosen_target = mobile_target
+                chosen_pre_alarm = mobile_pre_alarm
+                chosen_source = "mobile"
+            else:
+                chosen_target = None
+                chosen_pre_alarm = None
+                chosen_source = "none"
+
+        elif source_mode == ALARM_SOURCE_EARLIEST:
+            if mobile_target and fixed_target:
+                if mobile_target <= fixed_target:
+                    chosen_target = mobile_target
+                    chosen_pre_alarm = mobile_pre_alarm
+                    chosen_source = "mobile"
+                else:
+                    chosen_target = fixed_target
+                    chosen_pre_alarm = fixed_pre_alarm
+                    chosen_source = "fixed"
+            elif mobile_target:
+                chosen_target = mobile_target
+                chosen_pre_alarm = mobile_pre_alarm
+                chosen_source = "mobile"
+            elif fixed_target:
+                chosen_target = fixed_target
+                chosen_pre_alarm = fixed_pre_alarm
+                chosen_source = "fixed"
+            else:
+                chosen_target = None
+                chosen_pre_alarm = None
+                chosen_source = "none"
+
+        else:  # ALARM_SOURCE_MOBILE_PRIORITY (default)
+            if mobile_target:
+                chosen_target = mobile_target
+                chosen_pre_alarm = mobile_pre_alarm
+                chosen_source = "mobile"
+            else:
+                chosen_target = fixed_target
+                chosen_pre_alarm = fixed_pre_alarm
+                chosen_source = "fixed_fallback" if self.mobile_alarm_entity else "fixed"
+
+        self._next_alarm = chosen_target
+        self._pre_alarm_time = chosen_pre_alarm if pre_alarm_enabled else chosen_target
+        self._active_alarm_source = chosen_source
 
         if self._next_alarm and self._pre_alarm_time:
             _LOGGER.info(
-                "Smart Wake [%s] next scheduled: Main=%s, PreAlarm=%s (Offset: -%dm, Reasons: %s)",
+                "Smart Wake [%s] next scheduled (%s): Main=%s, PreAlarm=%s (Offset: -%dm, Reasons: %s)",
                 self._name,
+                self._active_alarm_source,
                 self._next_alarm.isoformat(),
                 self._pre_alarm_time.isoformat(),
                 self._dynamic_offset_minutes,
@@ -555,6 +662,73 @@ class SmartWakeAlarm:
             self._arm_schedule_timer()
 
         self._notify_update()
+
+    def _parse_mobile_alarm_time(self) -> datetime | None:
+        """Parse next alarm timestamp from mobile phone alarm sensor."""
+        entity_id = self._config.get(CONF_MOBILE_ALARM_ENTITY)
+        if not entity_id or not hasattr(self.hass, "states"):
+            return None
+
+        state_obj = self.hass.states.get(entity_id)
+        if not state_obj or state_obj.state in (
+            STATE_UNAVAILABLE,
+            STATE_UNKNOWN,
+            "none",
+            "None",
+            "",
+            "not available",
+            "not_available",
+            "off",
+        ):
+            return None
+
+        raw_val = str(state_obj.state).strip()
+
+        # 1. Standard ISO-8601 parsing
+        parsed_dt = dt_util.parse_datetime(raw_val)
+
+        # 2. Try parsing numeric unix timestamp
+        if parsed_dt is None:
+            try:
+                val_float = float(raw_val)
+                if val_float > 1e11:  # milliseconds
+                    val_float /= 1000.0
+                parsed_dt = dt_util.utc_from_timestamp(val_float)
+            except (ValueError, TypeError):
+                pass
+
+        # 3. Check attributes if state was not parseable
+        if parsed_dt is None and hasattr(state_obj, "attributes"):
+            for attr_key in ("Time Stamp", "timestamp", "next_alarm"):
+                attr_val = state_obj.attributes.get(attr_key)
+                if attr_val:
+                    if isinstance(attr_val, (int, float)):
+                        ts = attr_val / 1000.0 if attr_val > 1e11 else float(attr_val)
+                        parsed_dt = dt_util.utc_from_timestamp(ts)
+                        break
+                    elif isinstance(attr_val, datetime):
+                        parsed_dt = attr_val
+                        break
+                    elif isinstance(attr_val, str):
+                        parsed_dt = dt_util.parse_datetime(attr_val)
+                        if parsed_dt:
+                            break
+
+        if parsed_dt is None or not isinstance(parsed_dt, datetime):
+            return None
+
+        # Convert to local timezone
+        if parsed_dt.tzinfo is None:
+            parsed_dt = parsed_dt.replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
+        else:
+            parsed_dt = dt_util.as_local(parsed_dt)
+
+        # Ensure it is in the future (grace period of 60 seconds)
+        now = dt_util.now()
+        if parsed_dt <= now - timedelta(seconds=60):
+            return None
+
+        return parsed_dt
 
     def _parse_time(self, time_val: str) -> tuple[int, int]:
         """Parse HH:MM string safely."""
@@ -622,8 +796,15 @@ class SmartWakeAlarm:
 
     def _setup_dynamic_sensors_listener(self) -> None:
         """Listen to sensor changes that affect schedule recalculation."""
+        if self._unsub_dynamic_sensors is not None:
+            try:
+                self._unsub_dynamic_sensors()
+            except Exception:
+                pass
+            self._unsub_dynamic_sensors = None
+
         sensor_entities: list[str] = []
-        for key in (CONF_WEATHER_TEMP_ENTITY, CONF_WEATHER_RAIN_ENTITY):
+        for key in (CONF_WEATHER_TEMP_ENTITY, CONF_WEATHER_RAIN_ENTITY, CONF_MOBILE_ALARM_ENTITY):
             ent = self._config.get(key)
             if ent and isinstance(ent, str):
                 sensor_entities.append(ent)
@@ -634,10 +815,9 @@ class SmartWakeAlarm:
                 self.hass.async_create_task(self.async_recalculate_schedule())
 
             try:
-                unsub = async_track_state_change_event(
+                self._unsub_dynamic_sensors = async_track_state_change_event(
                     self.hass, sensor_entities, _sensor_state_changed
                 )
-                self._unsub_listeners.append(unsub)
             except Exception as err:
                 _LOGGER.debug("Could not attach state change tracker: %s", err)
 
@@ -2075,6 +2255,12 @@ class SmartWakeAlarm:
             self._unsub_dry_run = None
 
     def _cleanup_listeners(self) -> None:
+        if self._unsub_dynamic_sensors is not None:
+            try:
+                self._unsub_dynamic_sensors()
+            except Exception:
+                pass
+            self._unsub_dynamic_sensors = None
         for unsub in self._unsub_listeners:
             try:
                 unsub()

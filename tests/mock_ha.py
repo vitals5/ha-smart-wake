@@ -36,7 +36,25 @@ class MockHomeAssistant:
         self.services.async_register = MagicMock()
         self.services.async_remove = MagicMock()
         self.services.has_service = MagicMock(return_value=True)
+        self._states_map = {}
         self.states = MagicMock()
+        def _get_state(entity_id):
+            if entity_id in self._states_map:
+                return self._states_map[entity_id]
+            mock_s = MagicMock()
+            mock_s.entity_id = entity_id
+            mock_s.state = "unknown"
+            mock_s.attributes = {}
+            return mock_s
+        self.states.get = MagicMock(side_effect=_get_state)
+        def _set_state(entity_id, state, attributes=None):
+            st = MagicMock()
+            st.entity_id = entity_id
+            st.state = str(state)
+            st.attributes = attributes or {}
+            self._states_map[entity_id] = st
+            return st
+        self.states.set = _set_state
         self.bus = MagicMock()
         self.bus.async_fire = MagicMock()
         self.bus.async_listen = MagicMock(return_value=lambda: None)
@@ -169,6 +187,19 @@ dt_util_mock.now = lambda: datetime.now().astimezone()
 dt_util_mock.utcnow = lambda: datetime.now(timezone.utc)
 dt_util_mock.as_utc = lambda d: d
 dt_util_mock.as_local = lambda d: d
+dt_util_mock.DEFAULT_TIME_ZONE = timezone.utc
+
+def _mock_parse_datetime(dt_str):
+    if not isinstance(dt_str, str):
+        return None
+    try:
+        clean_str = dt_str.replace("Z", "+00:00")
+        return datetime.fromisoformat(clean_str)
+    except Exception:
+        return None
+
+dt_util_mock.parse_datetime = _mock_parse_datetime
+dt_util_mock.utc_from_timestamp = lambda ts: datetime.fromtimestamp(ts, tz=timezone.utc)
 
 dispatcher_mock = MagicMock()
 dispatcher_mock.async_dispatcher_send = MagicMock()
