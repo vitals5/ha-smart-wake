@@ -3,31 +3,32 @@ intents:
   SmartWakeSetTime:
     data:
       - sentences:
-          - "stelle [den] [wecker] {alarm} auf {time} [uhr]"
+          - "stelle [den] wecker [im|in der|in dem|für das|für den] {alarm} auf {time} [uhr]"
           - "stelle [den] wecker auf {time} [uhr]"
           - "wecke mich morgen um {time} [uhr]"
           - "wecke mich um {time} [uhr]"
-          - "ändere [den] [wecker] {alarm} auf {time} [uhr]"
+          - "ändere [den] wecker [im|in der|in dem|für das|für den] {alarm} auf {time} [uhr]"
           - "ändere [den] wecker auf {time} [uhr]"
-          - "weckzeit [für] [wecker] {alarm} auf {time} [uhr] [setzen|stellen]"
+          - "weckzeit [für] [den] wecker [im|in der|in dem|für das|für den] {alarm} auf {time} [uhr] [setzen|stellen]"
+          - "weckzeit auf {time} [uhr] [setzen|stellen]"
 
   SmartWakeSetStatus:
     data:
       - sentences:
-          - "schalte [den] [wecker] {alarm} [wieder] (an|ein)"
+          - "schalte [den] wecker [im|in der|in dem|für das|für den] {alarm} [wieder] (an|ein)"
           - "schalte [den] wecker [wieder] (an|ein)"
-          - "aktiviere [den] [wecker] {alarm}"
+          - "aktiviere [den] wecker [im|in der|in dem|für das|für den] {alarm}"
           - "aktiviere [den] wecker"
-          - "[wecker] {alarm} (an|ein)[schalten]"
+          - "wecker [im|in der|in dem|für das|für den] {alarm} (an|ein)[schalten]"
           - "wecker (an|ein)[schalten]"
         slots:
           status: "ein"
       - sentences:
-          - "schalte [den] [wecker] {alarm} aus"
+          - "schalte [den] wecker [im|in der|in dem|für das|für den] {alarm} aus"
           - "schalte [den] wecker aus"
-          - "deaktiviere [den] [wecker] {alarm}"
+          - "deaktiviere [den] wecker [im|in der|in dem|für das|für den] {alarm}"
           - "deaktiviere [den] wecker"
-          - "[wecker] {alarm} aus[schalten]"
+          - "wecker [im|in der|in dem|für das|für den] {alarm} aus[schalten]"
           - "wecker aus[schalten]"
           - "schalte den wecker für morgen aus"
         slots:
@@ -40,7 +41,7 @@ intents:
           - "fünf minuten weiterschlafen"
           - "zehn minuten weiterschlafen"
           - "noch ein bisschen weiterschlafen"
-          - "[wecker] {alarm} schlummern"
+          - "wecker [im|in der|in dem|für das|für den] {alarm} schlummern"
           - "wecker schlummern"
           - "schlummern"
           - "snooze"
@@ -50,11 +51,11 @@ intents:
       - sentences:
           - "ich bin wach"
           - "wecker stoppen"
-          - "wecker {alarm} stoppen"
-          - "alarm stoppen"
+          - "wecker [im|in der|in dem|für das|für den] {alarm} stoppen"
           - "wecker quittieren"
-          - "wecker {alarm} quittieren"
-          - "alarm beenden"
+          - "wecker [im|in der|in dem|für das|für den] {alarm} quittieren"
+          - "wecker beenden"
+          - "wecker [im|in der|in dem|für das|für den] {alarm} beenden"
 
 lists:
   alarm:

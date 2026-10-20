@@ -3,43 +3,42 @@ intents:
   SmartWakeSetTime:
     data:
       - sentences:
-          - "règle [le] [réveil] [dans] [la] {alarm} à {time} [heures|h]"
+          - "règle le réveil [dans] [la] {alarm} à {time} [heures|h]"
           - "règle le réveil à {time} [heures|h]"
-          - "mets [le] [réveil] [dans] [la] {alarm} à {time} [heures|h]"
+          - "mets le réveil [dans] [la] {alarm} à {time} [heures|h]"
           - "mets le réveil à {time} [heures|h]"
           - "réveille-moi demain à {time} [heures|h]"
           - "réveille-moi à {time} [heures|h]"
-          - "change [l'heure] [du] [réveil] [dans] [la] {alarm} à {time} [heures|h]"
+          - "change [l'heure] [du] réveil [dans] [la] {alarm} à {time} [heures|h]"
           - "change le réveil à {time} [heures|h]"
 
   SmartWakeSetStatus:
     data:
       - sentences:
-          - "active [le] [réveil] [dans] [la] {alarm}"
+          - "active le réveil [dans] [la] {alarm}"
           - "active le réveil"
-          - "allume [le] [réveil] [dans] [la] {alarm}"
+          - "allume le réveil [dans] [la] {alarm}"
           - "allume le réveil"
         slots:
           status: "on"
       - sentences:
-          - "désactive [le] [réveil] [dans] [la] {alarm}"
+          - "désactive le réveil [dans] [la] {alarm}"
           - "désactive le réveil"
-          - "éteins [le] [réveil] [dans] [la] {alarm}"
+          - "éteins le réveil [dans] [la] {alarm}"
           - "éteins le réveil"
-          - "désactive le réveil pour demain"
+          - "éteins le réveil pour demain"
         slots:
           status: "off"
 
   SmartWakeSnooze:
     data:
       - sentences:
-          - "répète [le] [réveil]"
-          - "répéter"
-          - "encore {duration} minutes de sommeil"
-          - "encore cinq minutes de sommeil"
-          - "encore dix minutes de sommeil"
+          - "répète le réveil"
+          - "répéter le réveil"
           - "laisse-moi dormir encore {duration} minutes"
-          - "laisse-moi dormir encore un peu"
+          - "laisse-moi dormir encore cinq minutes"
+          - "laisse-moi dormir encore dix minutes"
+          - "encore un peu de sommeil"
           - "snooze"
 
   SmartWakeDismiss:
@@ -47,11 +46,9 @@ intents:
       - sentences:
           - "je suis réveillé"
           - "je suis debout"
-          - "arrête [le] réveil"
-          - "arrête [le] [réveil] [dans] [la] {alarm}"
-          - "éteins l'alarme"
-          - "arrête l'alarme"
-          - "stop"
+          - "arrête le réveil [dans] [la] {alarm}"
+          - "arrête le réveil"
+          - "stop le réveil"
 
 lists:
   alarm:

@@ -260,13 +260,22 @@ def _get_msg(catalog: dict[str, str], lang: str, **kwargs: Any) -> str:
 
 
 def _find_alarm(hass: HomeAssistant, name: str | None) -> SmartWakeAlarm | None:
-    """Find alarm instance by name or return the first available one."""
+    """Find alarm instance by name or return the first available one when no name was specified."""
     domain_data: dict[str, SmartWakeAlarm] = hass.data.get(DOMAIN, {})
     if not domain_data:
         return None
 
-    if name:
+    if name and name.strip():
         target_name = name.strip().lower()
+
+        # Strip common prepositions / articles if captured in slot
+        for prep in (
+            "im ", "in der ", "in dem ", "in ", "für das ", "für die ", "für den ", "für ",
+            "del ", "della ", "de la ", "dans la ", "dans le ", "dans ", "в ", "na ", "no ", "na "
+        ):
+            if target_name.startswith(prep):
+                target_name = target_name[len(prep):].strip()
+
         # 1. Direct substring match
         for alarm in domain_data.values():
             alarm_lower = alarm.name.lower()
@@ -281,7 +290,11 @@ def _find_alarm(hass: HomeAssistant, name: str | None) -> SmartWakeAlarm | None:
                     if any(alias in alarm_lower for alias in group):
                         return alarm
 
-    # Default to first available alarm
+        # Explicit alarm name/room requested, but no matching alarm found.
+        # Do NOT fall back to a random or unrelated alarm instance!
+        return None
+
+    # Default to first available alarm only if no specific name was given
     return next(iter(domain_data.values()), None)
 
 

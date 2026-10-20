@@ -182,6 +182,76 @@ class TestSmartWakeIntents(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.alarm.enabled)
         self.assertIn("desativado", res_pt.speech)
 
+    async def test_unknown_alarm_name_does_not_fall_back_to_unrelated_alarm(self) -> None:
+        """Test that unknown device or room names (e.g. 'Lampe', 'Küche') do not touch unrelated alarms."""
+        status_handler = SmartWakeSetStatusHandler()
+        self.alarm._enabled = True
+
+        # Non-matching name like 'Lampe'
+        intent_lampe = MockIntentObj(
+            self.hass,
+            {"status": {"value": "aus"}, "alarm": {"value": "Lampe"}},
+        )
+        res_lampe = await status_handler.async_handle(intent_lampe)
+        self.assertTrue(self.alarm.enabled, "Alarm must NOT be disabled when target was 'Lampe'")
+        self.assertIn("Es wurde kein passender Smart Wake Wecker gefunden", res_lampe.speech)
+
+        # Non-matching room like 'Küche' when only 'Schlafzimmer' exists
+        intent_kueche = MockIntentObj(
+            self.hass,
+            {"status": {"value": "aus"}, "alarm": {"value": "Küche"}},
+        )
+        res_kueche = await status_handler.async_handle(intent_kueche)
+        self.assertTrue(self.alarm.enabled, "Alarm must NOT be disabled when target was 'Küche'")
+        self.assertIn("Es wurde kein passender Smart Wake Wecker gefunden", res_kueche.speech)
+
+    async def test_no_alarm_slot_falls_back_to_single_alarm(self) -> None:
+        """Test that generic voice commands without alarm slot toggle the only configured alarm."""
+        status_handler = SmartWakeSetStatusHandler()
+        self.alarm._enabled = True
+
+        intent_general = MockIntentObj(
+            self.hass,
+            {"status": {"value": "aus"}},
+        )
+        res = await status_handler.async_handle(intent_general)
+        self.assertFalse(self.alarm.enabled)
+        self.assertIn("ausgeschaltet", res.speech)
+
+    async def test_preposition_stripping_in_alarm_name(self) -> None:
+        """Test that German and other prepositions ('im Schlafzimmer') resolve correctly."""
+        time_handler = SmartWakeSetTimeHandler()
+        intent_time = MockIntentObj(
+            self.hass,
+            {"time": {"value": "08:15"}, "alarm": {"value": "im Schlafzimmer"}},
+        )
+        res = await time_handler.async_handle(intent_time)
+        self.assertEqual(self.alarm.time_str, "08:15")
+        self.assertIn("08:15 Uhr", res.speech)
+
+    def test_custom_sentences_do_not_have_optional_alarm_nouns(self) -> None:
+        """Ensure that sentence YAMLs do not mark alarm nouns as optional, which would hijack regular device commands."""
+        import glob
+        import yaml
+
+        for yaml_file in glob.glob("custom_components/smart_wake/custom_sentences/*/*.yaml"):
+            with open(yaml_file, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+
+            for intent_name, intent_data in data.get("intents", {}).items():
+                for group in intent_data.get("data", []):
+                    for sentence in group.get("sentences", []):
+                        # Ensure no optional alarm words like [wecker], [alarm], [despertador], [réveil], [sveglia], [budzik]
+                        for optional_noun in (
+                            "[wecker]", "[alarm]", "[despertador]", "[réveil]", "[sveglia]", "[budzik]", "[wekker]"
+                        ):
+                            self.assertNotIn(
+                                optional_noun,
+                                sentence.lower(),
+                                f"File {yaml_file} contains optional alarm noun '{optional_noun}' in sentence: '{sentence}'! "
+                                "This causes Assist to hijack regular device commands like 'Lampe an'."
+                            )
+
 
 if __name__ == "__main__":
     unittest.main()

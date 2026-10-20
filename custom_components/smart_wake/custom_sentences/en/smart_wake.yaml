@@ -3,25 +3,25 @@ intents:
   SmartWakeSetTime:
     data:
       - sentences:
-          - "set [the] [alarm] {alarm} to {time}"
+          - "set [the] alarm [in|for] [the] {alarm} to {time}"
           - "set the alarm to {time}"
           - "wake me up tomorrow at {time}"
           - "wake me up at {time}"
-          - "change [the] [alarm] {alarm} to {time}"
+          - "change [the] alarm [in|for] [the] {alarm} to {time}"
           - "change the alarm to {time}"
 
   SmartWakeSetStatus:
     data:
       - sentences:
-          - "turn on [the] [alarm] {alarm}"
-          - "enable [the] [alarm] {alarm}"
+          - "turn on [the] alarm [in|for] [the] {alarm}"
+          - "enable [the] alarm [in|for] [the] {alarm}"
           - "turn on the alarm"
           - "enable the alarm"
         slots:
           status: "on"
       - sentences:
-          - "turn off [the] [alarm] {alarm}"
-          - "disable [the] [alarm] {alarm}"
+          - "turn off [the] alarm [in|for] [the] {alarm}"
+          - "disable [the] alarm [in|for] [the] {alarm}"
           - "turn off the alarm"
           - "disable the alarm"
           - "turn off the alarm for tomorrow"
@@ -31,20 +31,20 @@ intents:
   SmartWakeSnooze:
     data:
       - sentences:
-          - "snooze [the] [alarm] [for] {duration} minutes"
+          - "snooze [the] alarm [for] {duration} minutes"
           - "snooze five minutes"
-          - "snooze alarm"
+          - "snooze [the] alarm"
           - "snooze"
           - "sleep five more minutes"
 
   SmartWakeDismiss:
     data:
       - sentences:
-          - "i am awake"
-          - "stop [the] alarm"
-          - "stop [the] [alarm] {alarm}"
-          - "dismiss [the] alarm"
-          - "dismiss"
+          - "I'm awake"
+          - "stop the alarm"
+          - "stop [the] alarm [in|for] [the] {alarm}"
+          - "dismiss the alarm"
+          - "dismiss [the] alarm [in|for] [the] {alarm}"
 
 lists:
   alarm:

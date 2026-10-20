@@ -3,27 +3,29 @@ intents:
   SmartWakeSetTime:
     data:
       - sentences:
-          - "zet [de] [wekker] {alarm} op {time} [uur]"
+          - "zet de wekker [in] {alarm} op {time} [uur]"
           - "zet de wekker op {time} [uur]"
-          - "maak me morgen om {time} [uur] wakker"
-          - "maak me om {time} [uur] wakker"
-          - "verander [de] [wekker] {alarm} naar {time} [uur]"
+          - "stel de wekker [in] {alarm} in op {time} [uur]"
+          - "stel de wekker in op {time} [uur]"
+          - "maak me morgen wakker om {time} [uur]"
+          - "maak me wakker om {time} [uur]"
+          - "verander de wekker [in] {alarm} naar {time} [uur]"
           - "verander de wekker naar {time} [uur]"
 
   SmartWakeSetStatus:
     data:
       - sentences:
-          - "zet [de] [wekker] {alarm} aan"
+          - "schakel de wekker [in] {alarm} in"
+          - "schakel de wekker in"
+          - "zet de wekker [in] {alarm} aan"
           - "zet de wekker aan"
-          - "activeer [de] [wekker] {alarm}"
-          - "activeer de wekker"
         slots:
           status: "on"
       - sentences:
-          - "zet [de] [wekker] {alarm} uit"
+          - "schakel de wekker [in] {alarm} uit"
+          - "schakel de wekker uit"
+          - "zet de wekker [in] {alarm} uit"
           - "zet de wekker uit"
-          - "deactiveer [de] [wekker] {alarm}"
-          - "deactiveer de wekker"
           - "zet de wekker voor morgen uit"
         slots:
           status: "off"
@@ -31,7 +33,7 @@ intents:
   SmartWakeSnooze:
     data:
       - sentences:
-          - "snooze [de] wekker"
+          - "snooze de wekker"
           - "snooze"
           - "nog {duration} minuten slapen"
           - "nog vijf minuten slapen"
@@ -43,9 +45,9 @@ intents:
       - sentences:
           - "ik ben wakker"
           - "ik ben opgestaan"
-          - "stop [de] wekker"
-          - "stop [de] [wekker] {alarm}"
-          - "alarm stoppen"
+          - "stop de wekker [in] {alarm}"
+          - "stop de wekker"
+          - "wekker uit"
 
 lists:
   alarm:

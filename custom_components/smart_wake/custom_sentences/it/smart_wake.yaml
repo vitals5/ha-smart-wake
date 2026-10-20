@@ -3,28 +3,28 @@ intents:
   SmartWakeSetTime:
     data:
       - sentences:
-          - "imposta [la] [sveglia] [in] {alarm} alle {time}"
+          - "imposta la sveglia [in] {alarm} alle {time}"
           - "imposta la sveglia alle {time}"
-          - "metti [la] [sveglia] [in] {alarm} alle {time}"
+          - "metti la sveglia [in] {alarm} alle {time}"
           - "metti la sveglia alle {time}"
           - "svegliami domani alle {time}"
           - "svegliami alle {time}"
-          - "cambia [la] [sveglia] [in] {alarm} alle {time}"
+          - "cambia la sveglia [in] {alarm} alle {time}"
           - "cambia la sveglia alle {time}"
 
   SmartWakeSetStatus:
     data:
       - sentences:
-          - "attiva [la] [sveglia] [in] {alarm}"
+          - "attiva la sveglia [in] {alarm}"
           - "attiva la sveglia"
-          - "accendi [la] [sveglia] [in] {alarm}"
+          - "accendi la sveglia [in] {alarm}"
           - "accendi la sveglia"
         slots:
           status: "on"
       - sentences:
-          - "disattiva [la] [sveglia] [in] {alarm}"
+          - "disattiva la sveglia [in] {alarm}"
           - "disattiva la sveglia"
-          - "spegni [la] [sveglia] [in] {alarm}"
+          - "spegni la sveglia [in] {alarm}"
           - "spegni la sveglia"
           - "spegni la sveglia per domani"
         slots:
@@ -33,7 +33,7 @@ intents:
   SmartWakeSnooze:
     data:
       - sentences:
-          - "posponi [la] sveglia"
+          - "posponi la sveglia"
           - "posponi"
           - "fammi dormire ancora {duration} minuti"
           - "fammi dormire ancora cinque minuti"
@@ -45,9 +45,9 @@ intents:
       - sentences:
           - "sono sveglio"
           - "mi sono alzato"
+          - "ferma la sveglia [in] {alarm}"
           - "ferma la sveglia"
-          - "ferma [la] [sveglia] [in] {alarm}"
-          - "spegni l'allarme"
+          - "spegni la sveglia"
           - "stop"
 
 lists:

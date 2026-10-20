@@ -5,7 +5,7 @@ import os
 
 DOMAIN = "smart_wake"
 NAME = "Smart Wake"
-VERSION = "1.0.22"
+VERSION = "1.0.23"
 
 # Static assets and frontend paths
 URL_BASE = "/smart_wake_frontend"

@@ -3,26 +3,26 @@ intents:
   SmartWakeSetTime:
     data:
       - sentences:
-          - "ustaw [budzik] [w] {alarm} na {time}"
+          - "ustaw budzik [w] {alarm} na {time}"
           - "ustaw budzik na {time}"
           - "obudź mnie jutro o {time}"
           - "obudź mnie o {time}"
-          - "zmień [budzik] [w] {alarm} na {time}"
+          - "zmień budzik [w] {alarm} na {time}"
           - "zmień budzik na {time}"
 
   SmartWakeSetStatus:
     data:
       - sentences:
-          - "włącz [budzik] [w] {alarm}"
+          - "włącz budzik [w] {alarm}"
           - "włącz budzik"
-          - "aktywuj [budzik] [w] {alarm}"
+          - "aktywuj budzik [w] {alarm}"
           - "aktywuj budzik"
         slots:
           status: "on"
       - sentences:
-          - "wyłącz [budzik] [w] {alarm}"
+          - "wyłącz budzik [w] {alarm}"
           - "wyłącz budzik"
-          - "deaktywuj [budzik] [w] {alarm}"
+          - "deaktywuj budzik [w] {alarm}"
           - "deaktywuj budzik"
           - "wyłącz budzik na jutro"
         slots:
@@ -31,7 +31,7 @@ intents:
   SmartWakeSnooze:
     data:
       - sentences:
-          - "odłóż [budzik]"
+          - "odłóż budzik"
           - "drzemka"
           - "daj mi pospać jeszcze {duration} minut"
           - "daj mi pospać jeszcze pięć minut"
@@ -41,12 +41,11 @@ intents:
   SmartWakeDismiss:
     data:
       - sentences:
-          - "obudziłem się"
+          - "już nie śpię"
           - "wstałem"
+          - "zatrzymaj budzik [w] {alarm}"
           - "zatrzymaj budzik"
-          - "zatrzymaj [budzik] [w] {alarm}"
-          - "wyłącz alarm"
-          - "stop"
+          - "wyłącz budzik"
 
 lists:
   alarm:
