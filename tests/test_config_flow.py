@@ -125,6 +125,60 @@ class TestSmartWakeConfigFlow(unittest.IsolatedAsyncioTestCase):
         flow2 = MockModernOptionsFlow(MagicMock(data={CONF_TIME: "09:00"}, options={}))
         self.assertEqual(flow2._options[CONF_TIME], "09:00")
 
+    async def test_language_defaults_en_and_de(self) -> None:
+        """Test English is default unless Home Assistant language is German."""
+        from custom_components.smart_wake.config_flow import (
+            is_de_lang,
+            get_weekday_options,
+            get_calendar_behavior_options,
+            get_alarm_source_mode_options,
+        )
+
+        # 1. When hass has no language or 'en', it should be English
+        self.hass.config = MagicMock()
+        self.hass.config.language = "en"
+        self.assertFalse(is_de_lang(self.hass))
+
+        flow_en = SmartWakeConfigFlow()
+        flow_en.hass = self.hass
+        # Submit without CONF_NAME so it falls back to default_name
+        res_en = await flow_en.async_step_user({
+            CONF_TIME: "07:00",
+            CONF_ENABLED: True,
+            CONF_DAYS: ["mon"],
+        })
+        self.assertEqual(res_en["title"], "Bedroom Alarm")
+
+        # Check options for en
+        weekdays_en = get_weekday_options(False)
+        self.assertIn("Mon", weekdays_en[0]["label"])
+        cal_en = get_calendar_behavior_options(False)
+        self.assertIn("Disabled", cal_en[0]["label"])
+        src_en = get_alarm_source_mode_options(False)
+        self.assertIn("Phone alarm has priority", src_en[0]["label"])
+
+        # 2. When hass language is German ('de' or 'de-DE')
+        self.hass.config.language = "de"
+        self.assertTrue(is_de_lang(self.hass))
+
+        flow_de = SmartWakeConfigFlow()
+        flow_de.hass = self.hass
+        # Submit without CONF_NAME so it falls back to default_name
+        res_de = await flow_de.async_step_user({
+            CONF_TIME: "07:00",
+            CONF_ENABLED: True,
+            CONF_DAYS: ["mon"],
+        })
+        self.assertEqual(res_de["title"], "Wecker Schlafzimmer")
+
+        # Check options for de
+        weekdays_de = get_weekday_options(True)
+        self.assertIn("Mo", weekdays_de[0]["label"])
+        cal_de = get_calendar_behavior_options(True)
+        self.assertIn("Deaktiviert", cal_de[0]["label"])
+        src_de = get_alarm_source_mode_options(True)
+        self.assertIn("Handy-Wecker hat Vorrang", src_de[0]["label"])
+
 
 if __name__ == "__main__":
     unittest.main()

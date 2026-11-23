@@ -252,6 +252,18 @@ RESPONSES_DISMISS_ANTI_CHEAT = {
 }
 
 
+def _resolve_lang(hass: HomeAssistant, intent_obj: Any) -> str:
+    """Resolve language: English default, German if HA or intent is German, or matching catalog."""
+    raw = getattr(intent_obj, "language", None)
+    if not raw and hasattr(hass, "config"):
+        raw = getattr(hass.config, "language", None)
+    if not raw:
+        return "en"
+    raw_str = str(raw).strip()
+    prefix = raw_str.split("-")[0].lower() if raw_str else "en"
+    return prefix if prefix in ("de", "ru", "fr", "es", "it", "nl", "pl", "pt") else "en"
+
+
 def _get_msg(catalog: dict[str, str], lang: str, **kwargs: Any) -> str:
     """Retrieve localized message template and format with kwargs."""
     prefix = lang.split("-")[0].lower() if lang else "en"
@@ -306,7 +318,7 @@ class SmartWakeSetTimeHandler(intent.IntentHandler):
     async def async_handle(self, intent_obj: Any) -> Any:
         """Handle setting alarm time via Voice Assist."""
         hass = intent_obj.hass
-        lang = getattr(intent_obj, "language", "de")
+        lang = _resolve_lang(hass, intent_obj)
         slots = self.async_validate_slots(intent_obj.slots)
         time_slot = slots.get("time", {}).get("value")
         alarm_slot = slots.get("alarm", {}).get("value")
@@ -355,7 +367,7 @@ class SmartWakeSetStatusHandler(intent.IntentHandler):
     async def async_handle(self, intent_obj: Any) -> Any:
         """Handle enabling/disabling alarm via Voice Assist."""
         hass = intent_obj.hass
-        lang = getattr(intent_obj, "language", "de")
+        lang = _resolve_lang(hass, intent_obj)
         slots = self.async_validate_slots(intent_obj.slots)
         status_slot = str(slots.get("status", {}).get("value", "")).lower()
         alarm_slot = slots.get("alarm", {}).get("value")
@@ -389,7 +401,7 @@ class SmartWakeSnoozeHandler(intent.IntentHandler):
     async def async_handle(self, intent_obj: Any) -> Any:
         """Handle snooze command via Voice Assist."""
         hass = intent_obj.hass
-        lang = getattr(intent_obj, "language", "de")
+        lang = _resolve_lang(hass, intent_obj)
         slots = self.async_validate_slots(intent_obj.slots)
         alarm_slot = slots.get("alarm", {}).get("value")
         duration_slot = slots.get("duration", {}).get("value")
@@ -420,7 +432,7 @@ class SmartWakeDismissHandler(intent.IntentHandler):
     async def async_handle(self, intent_obj: Any) -> Any:
         """Handle dismiss / stop alarm command via Voice Assist."""
         hass = intent_obj.hass
-        lang = getattr(intent_obj, "language", "de")
+        lang = _resolve_lang(hass, intent_obj)
         slots = self.async_validate_slots(intent_obj.slots)
         alarm_slot = slots.get("alarm", {}).get("value")
 

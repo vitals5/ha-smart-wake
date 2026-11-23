@@ -229,6 +229,63 @@ class TestSmartWakeIntents(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.alarm.time_str, "08:15")
         self.assertIn("08:15 Uhr", res.speech)
 
+    async def test_english_default_language_intents(self) -> None:
+        """Test English language intents when language is en or default."""
+        time_handler = SmartWakeSetTimeHandler()
+        status_handler = SmartWakeSetStatusHandler()
+        snooze_handler = SmartWakeSnoozeHandler()
+        dismiss_handler = SmartWakeDismissHandler()
+
+        # 1. Set time in English
+        intent_time = MockIntentObj(
+            self.hass,
+            {"time": {"value": "07:15"}, "alarm": {"value": "Schlafzimmer"}},
+            language="en",
+        )
+        res_time = await time_handler.async_handle(intent_time)
+        self.assertEqual(self.alarm.time_str, "07:15")
+        self.assertIn("set to 07:15", res_time.speech)
+
+        # 2. Turn off in English
+        intent_off = MockIntentObj(
+            self.hass,
+            {"status": {"value": "off"}, "alarm": {"value": "Schlafzimmer"}},
+            language="en",
+        )
+        res_off = await status_handler.async_handle(intent_off)
+        self.assertFalse(self.alarm.enabled)
+        self.assertIn("disabled", res_off.speech)
+
+        # 3. Turn on in English
+        intent_on = MockIntentObj(
+            self.hass,
+            {"status": {"value": "on"}, "alarm": {"value": "Schlafzimmer"}},
+            language="en",
+        )
+        res_on = await status_handler.async_handle(intent_on)
+        self.assertTrue(self.alarm.enabled)
+        self.assertIn("enabled", res_on.speech)
+
+        # 4. Snooze in English
+        self.alarm._status = STATUS_RINGING
+        intent_snooze = MockIntentObj(
+            self.hass,
+            {"alarm": {"value": "Schlafzimmer"}, "duration": {"value": 10}},
+            language="en",
+        )
+        res_snooze = await snooze_handler.async_handle(intent_snooze)
+        self.assertIn("10 more minutes", res_snooze.speech)
+
+        # 5. Dismiss in English
+        self.alarm._status = STATUS_RINGING
+        intent_dismiss = MockIntentObj(
+            self.hass,
+            {"alarm": {"value": "Schlafzimmer"}},
+            language="en",
+        )
+        res_dismiss = await dismiss_handler.async_handle(intent_dismiss)
+        self.assertIn("Good morning!", res_dismiss.speech)
+
     def test_custom_sentences_do_not_have_optional_alarm_nouns(self) -> None:
         """Ensure that sentence YAMLs do not mark alarm nouns as optional, which would hijack regular device commands."""
         import glob

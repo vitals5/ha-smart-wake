@@ -203,28 +203,61 @@ from .const import (
     DEFAULT_ALARM_SOURCE_MODE,
     DOMAIN,
     WEEKDAY_NAMES_DE,
+    WEEKDAY_NAMES_EN,
     WEEKDAYS,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
-WEEKDAY_OPTIONS = [
-    {"value": code, "label": f"{WEEKDAY_NAMES_DE.get(code, code)} ({code.capitalize()})"}
-    for code in WEEKDAYS
-]
 
-CALENDAR_BEHAVIOR_OPTIONS = [
-    {"value": CALENDAR_BEHAVIOR_NONE, "label": "Deaktiviert (Immer wecken)"},
-    {"value": CALENDAR_BEHAVIOR_ONLY_IF_EVENT, "label": "Nur wecken wenn Termin aktiv ist"},
-    {"value": CALENDAR_BEHAVIOR_SKIP_IF_EVENT, "label": "Wecker überspringen wenn Termin aktiv ist (Urlaub/Ferien)"},
-]
+def is_de_lang(hass: Any) -> bool:
+    """Return True if Home Assistant language is German."""
+    lang = getattr(getattr(hass, "config", None), "language", "en") if hass else "en"
+    return bool(str(lang).lower().startswith("de"))
 
-ALARM_SOURCE_MODE_OPTIONS = [
-    {"value": ALARM_SOURCE_MOBILE_PRIORITY, "label": "Handy-Wecker hat Vorrang, feste Zeit nur als Fallback (empfohlen)"},
-    {"value": ALARM_SOURCE_EARLIEST, "label": "Beide aktiv – wer zuerst kommt, gewinnt"},
-    {"value": ALARM_SOURCE_MOBILE_ONLY, "label": "Nur Handy-Wecker"},
-    {"value": ALARM_SOURCE_FIXED_ONLY, "label": "Nur feste Weckzeit"},
-]
+
+def get_weekday_options(is_de: bool) -> list[dict[str, str]]:
+    names = WEEKDAY_NAMES_DE if is_de else WEEKDAY_NAMES_EN
+    return [
+        {"value": code, "label": f"{names.get(code, code)} ({code.capitalize()})"}
+        for code in WEEKDAYS
+    ]
+
+
+def get_calendar_behavior_options(is_de: bool) -> list[dict[str, str]]:
+    if is_de:
+        return [
+            {"value": CALENDAR_BEHAVIOR_NONE, "label": "Deaktiviert (Immer wecken)"},
+            {"value": CALENDAR_BEHAVIOR_ONLY_IF_EVENT, "label": "Nur wecken wenn Termin aktiv ist"},
+            {"value": CALENDAR_BEHAVIOR_SKIP_IF_EVENT, "label": "Wecker überspringen wenn Termin aktiv ist (Urlaub/Ferien)"},
+        ]
+    return [
+        {"value": CALENDAR_BEHAVIOR_NONE, "label": "Disabled (Always ring)"},
+        {"value": CALENDAR_BEHAVIOR_ONLY_IF_EVENT, "label": "Only ring if calendar event is active"},
+        {"value": CALENDAR_BEHAVIOR_SKIP_IF_EVENT, "label": "Skip alarm if calendar event is active (vacation/holiday)"},
+    ]
+
+
+def get_alarm_source_mode_options(is_de: bool) -> list[dict[str, str]]:
+    if is_de:
+        return [
+            {"value": ALARM_SOURCE_MOBILE_PRIORITY, "label": "Handy-Wecker hat Vorrang, feste Zeit nur als Fallback (empfohlen)"},
+            {"value": ALARM_SOURCE_EARLIEST, "label": "Beide aktiv – wer zuerst kommt, gewinnt"},
+            {"value": ALARM_SOURCE_MOBILE_ONLY, "label": "Nur Handy-Wecker"},
+            {"value": ALARM_SOURCE_FIXED_ONLY, "label": "Nur feste Weckzeit"},
+        ]
+    return [
+        {"value": ALARM_SOURCE_MOBILE_PRIORITY, "label": "Phone alarm has priority, fixed time fallback (recommended)"},
+        {"value": ALARM_SOURCE_EARLIEST, "label": "Both active – earliest alarm wins"},
+        {"value": ALARM_SOURCE_MOBILE_ONLY, "label": "Phone alarm only"},
+        {"value": ALARM_SOURCE_FIXED_ONLY, "label": "Fixed alarm time only"},
+    ]
+
+
+# Backward compatible aliases
+WEEKDAY_OPTIONS = get_weekday_options(False)
+CALENDAR_BEHAVIOR_OPTIONS = get_calendar_behavior_options(False)
+ALARM_SOURCE_MODE_OPTIONS = get_alarm_source_mode_options(False)
 
 
 class SmartWakeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -237,9 +270,11 @@ class SmartWakeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Handle the initial setup step."""
         errors: dict[str, str] = {}
+        is_de = is_de_lang(self.hass)
+        default_name = "Wecker Schlafzimmer" if is_de else "Bedroom Alarm"
 
         if user_input is not None:
-            name = user_input.get(CONF_NAME, DEFAULT_NAME).strip()
+            name = user_input.get(CONF_NAME, default_name).strip()
             if not name:
                 errors["base"] = "invalid_name"
             else:
@@ -257,12 +292,12 @@ class SmartWakeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         schema = vol.Schema(
             {
-                vol.Required(CONF_NAME, default="Wecker Schlafzimmer"): str,
+                vol.Required(CONF_NAME, default=default_name): str,
                 vol.Required(CONF_TIME, default=DEFAULT_TIME): str,
                 vol.Required(CONF_ENABLED, default=True): bool,
                 vol.Required(CONF_DAYS, default=DEFAULT_DAYS): SelectSelector(
                     SelectSelectorConfig(
-                        options=WEEKDAY_OPTIONS,
+                        options=get_weekday_options(is_de),
                         multiple=True,
                         mode=SelectSelectorMode.LIST,
                     )
@@ -335,6 +370,7 @@ class SmartWakeOptionsFlowHandler(config_entries.OptionsFlow):
             self._options.update(user_input)
             return self.async_create_entry(title="", data=self._options)
 
+        is_de = is_de_lang(self.hass)
         schema = vol.Schema(
             {
                 vol.Required(
@@ -344,7 +380,7 @@ class SmartWakeOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_DAYS, default=self._options.get(CONF_DAYS, DEFAULT_DAYS)
                 ): SelectSelector(
                     SelectSelectorConfig(
-                        options=WEEKDAY_OPTIONS,
+                        options=get_weekday_options(is_de),
                         multiple=True,
                         mode=SelectSelectorMode.LIST,
                     )
@@ -362,7 +398,7 @@ class SmartWakeOptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                 ): SelectSelector(
                     SelectSelectorConfig(
-                        options=ALARM_SOURCE_MODE_OPTIONS,
+                        options=get_alarm_source_mode_options(is_de),
                         mode=SelectSelectorMode.LIST,
                     )
                 ) if SelectSelector else str,
@@ -389,7 +425,7 @@ class SmartWakeOptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                 ): SelectSelector(
                     SelectSelectorConfig(
-                        options=CALENDAR_BEHAVIOR_OPTIONS,
+                        options=get_calendar_behavior_options(is_de),
                         mode=SelectSelectorMode.DROPDOWN,
                     )
                 ) if SelectSelector else str,
@@ -560,6 +596,9 @@ class SmartWakeOptionsFlowHandler(config_entries.OptionsFlow):
             self._options.update(user_input)
             return self.async_create_entry(title="", data=self._options)
 
+        is_de = is_de_lang(self.hass)
+        default_tts = DEFAULT_MAIN_TTS_MESSAGE_DE if is_de else DEFAULT_MAIN_TTS_MESSAGE_EN
+
         schema = vol.Schema(
             {
                 vol.Optional(
@@ -627,7 +666,7 @@ class SmartWakeOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Required(
                     CONF_MAIN_TTS_MESSAGE,
                     default=self._options.get(
-                        CONF_MAIN_TTS_MESSAGE, DEFAULT_MAIN_TTS_MESSAGE
+                        CONF_MAIN_TTS_MESSAGE, default_tts
                     ),
                 ): str,
                 vol.Optional(

@@ -1180,12 +1180,41 @@ class SmartWakePanel extends HTMLElement {
     this.shadowRoot.appendChild(toastEl);
   }
 
+  _isDe() {
+    const lang =
+      (this._hass && (this._hass.language || (this._hass.locale && this._hass.locale.language))) || "en";
+    return String(lang).toLowerCase().startsWith("de");
+  }
+
+  _t(enText, deText) {
+    return this._isDe() ? deText : enText;
+  }
+
+  _getWeekdays() {
+    const isDe = this._isDe();
+    return [
+      { id: "mon", label: isDe ? "Mo" : "Mo" },
+      { id: "tue", label: isDe ? "Di" : "Tu" },
+      { id: "wed", label: isDe ? "Mi" : "We" },
+      { id: "thu", label: isDe ? "Do" : "Th" },
+      { id: "fri", label: isDe ? "Fr" : "Fr" },
+      { id: "sat", label: isDe ? "Sa" : "Sa" },
+      { id: "sun", label: isDe ? "So" : "Su" },
+    ];
+  }
+
   set hass(hass) {
     const oldHass = this._hass;
     this._hass = hass;
     if (!oldHass) {
       this._fetchAlarms();
       this._subscribeUpdates();
+    } else {
+      const oldLang = (oldHass && (oldHass.language || (oldHass.locale && oldHass.locale.language))) || "en";
+      const newLang = (hass && (hass.language || (hass.locale && hass.locale.language))) || "en";
+      if (oldLang !== newLang && this._dashboardRendered) {
+        this._renderDashboard();
+      }
     }
     if (!this._timer) {
       this._timer = setInterval(() => {
@@ -1289,13 +1318,15 @@ class SmartWakePanel extends HTMLElement {
     if (!this.shadowRoot) return;
     try {
       this._updateCountdowns();
+      const isDe = this._isDe();
       this._alarms.forEach((alarm) => {
         // Dynamic time updates
         const isMobile = alarm.alarm_source === "mobile" && alarm.next_alarm;
         const displayTime = isMobile ? this._formatTime(alarm.next_alarm) : alarm.time;
         const timeEl = this.shadowRoot.getElementById(`time-${alarm.id}`);
         if (timeEl) {
-          const text = isMobile ? `${displayTime} Uhr 📱` : `${displayTime} Uhr`;
+          const suffix = isDe ? " Uhr" : "";
+          const text = isMobile ? `${displayTime}${suffix} 📱` : `${displayTime}${suffix}`;
           if (timeEl.textContent !== text) timeEl.textContent = text;
         }
         const tlP2 = this.shadowRoot.getElementById(`timeline-p2-${alarm.id}`);
@@ -1313,7 +1344,7 @@ class SmartWakePanel extends HTMLElement {
           const barEl = this.shadowRoot.getElementById(`dryrun-bar-${alarm.id}`);
           const phaseEl = this.shadowRoot.getElementById(`dryrun-phase-${alarm.id}`);
           const pct = Math.min(100, (((alarm.dry_run_progress ?? 0) / 30) * 100));
-          if (textEl) textEl.textContent = `⏱️ Testlauf Zeitraffer: ${alarm.dry_run_progress ?? 0}s / 30s`;
+          if (textEl) textEl.textContent = this._t(`⏱️ Timelapse: ${alarm.dry_run_progress ?? 0}s / 30s`, `⏱️ Testlauf Zeitraffer: ${alarm.dry_run_progress ?? 0}s / 30s`);
           if (barEl) barEl.style.width = `${pct}%`;
           if (phaseEl) phaseEl.textContent = (alarm.active_phase || "").toUpperCase();
         }
@@ -1340,16 +1371,21 @@ class SmartWakePanel extends HTMLElement {
         const diffSecs = Math.max(0, Math.floor((snoozeDate - now) / 1000));
         const mins = Math.floor(diffSecs / 60);
         const secs = diffSecs % 60;
-        remaining = mins > 0 ? `noch ${mins}m ${secs}s` : `noch ${secs}s`;
+        remaining = mins > 0
+          ? this._t(`${mins}m ${secs}s left`, `noch ${mins}m ${secs}s`)
+          : this._t(`${secs}s left`, `noch ${secs}s`);
       } else if (snoozedAlarm.countdown_text) {
         remaining = snoozedAlarm.countdown_text;
       } else {
-        remaining = "aktiv";
+        remaining = this._t("active", "aktiv");
       }
 
       const isTest = Boolean(snoozedAlarm.is_testing || snoozedAlarm.is_full_test || snoozedAlarm.is_dry_run);
-      const testTag = isTest ? " [Testlauf]" : "";
-      const text = `💤 Schlummermodus läuft${testTag} (${remaining}) – Wecker pausiert`;
+      const testTag = isTest ? this._t(" [Test run]", " [Testlauf]") : "";
+      const text = this._t(
+        `💤 Snooze active${testTag} (${remaining}) – Alarm paused`,
+        `💤 Schlummermodus läuft${testTag} (${remaining}) – Wecker pausiert`
+      );
 
       // Always update toast text and keep it visible while snoozed!
       toast.textContent = text;
@@ -1358,7 +1394,7 @@ class SmartWakePanel extends HTMLElement {
     } else if (this._isSnoozeActive) {
       this._isSnoozeActive = false;
       toast.classList.remove("snoozing");
-      this._showToast("🔔 Schlummern beendet – Wecker wird fortgesetzt!", 3500);
+      this._showToast(this._t("🔔 Snooze finished – Alarm resuming!", "🔔 Schlummern beendet – Wecker wird fortgesetzt!"), 3500);
     }
   }
 
@@ -1369,17 +1405,21 @@ class SmartWakePanel extends HTMLElement {
       const chip = this.shadowRoot.getElementById(`countdown-${alarm.id}`);
       const snoozeBanner = this.shadowRoot.getElementById(`snooze-banner-text-${alarm.id}`);
 
-      let text = "Deaktiviert";
+      let text = this._t("Disabled", "Deaktiviert");
       let snoozeBannerRemaining = "";
       if (!alarm.enabled) {
-        text = "Deaktiviert";
+        text = this._t("Disabled", "Deaktiviert");
       } else if (alarm.status === "snoozed" && alarm.snooze_until) {
         const snoozeDate = new Date(alarm.snooze_until);
         const diffSecs = Math.max(0, Math.floor((snoozeDate - now) / 1000));
         const mins = Math.floor(diffSecs / 60);
         const secs = diffSecs % 60;
-        text = mins > 0 ? `Schlummert (noch ${mins}m ${secs}s)` : `Schlummert (noch ${secs}s)`;
-        snoozeBannerRemaining = mins > 0 ? `noch ${mins}m ${secs}s` : `noch ${secs}s`;
+        text = mins > 0
+          ? this._t(`Snoozing (${mins}m ${secs}s left)`, `Schlummert (noch ${mins}m ${secs}s)`)
+          : this._t(`Snoozing (${secs}s left)`, `Schlummert (noch ${secs}s)`);
+        snoozeBannerRemaining = mins > 0
+          ? this._t(`${mins}m ${secs}s left`, `noch ${mins}m ${secs}s`)
+          : this._t(`${secs}s left`, `noch ${secs}s`);
       } else if (alarm.next_alarm) {
         const nextDate = new Date(alarm.next_alarm);
         const diffSecs = Math.max(0, Math.floor((nextDate - now) / 1000));
@@ -1396,7 +1436,10 @@ class SmartWakePanel extends HTMLElement {
       }
 
       if (snoozeBanner && snoozeBannerRemaining) {
-        const bannerFormatted = `💤 Schlummermodus aktiv (${snoozeBannerRemaining})`;
+        const bannerFormatted = this._t(
+          `💤 Snooze mode active (${snoozeBannerRemaining})`,
+          `💤 Schlummermodus aktiv (${snoozeBannerRemaining})`
+        );
         if (snoozeBanner.textContent.trim() !== bannerFormatted) {
           snoozeBanner.textContent = bannerFormatted;
         }
@@ -1405,12 +1448,13 @@ class SmartWakePanel extends HTMLElement {
   }
 
   _formatCountdown(totalSecs) {
-    if (totalSecs <= 0) return "Jetzt fällig";
+    const isDe = this._isDe();
+    if (totalSecs <= 0) return isDe ? "Jetzt fällig" : "Due now";
     const hours = Math.floor(totalSecs / 3600);
     const mins = Math.floor((totalSecs % 3600) / 60);
     const parts = [];
-    if (hours > 0) parts.push(`${hours} Std.`);
-    if (mins > 0 || hours === 0) parts.push(`${mins} Min.`);
+    if (hours > 0) parts.push(isDe ? `${hours} Std.` : `${hours}h`);
+    if (mins > 0 || hours === 0) parts.push(isDe ? `${mins} Min.` : `${mins}m`);
     return "in " + parts.join(" ");
   }
   async _subscribeUpdates() {
@@ -1468,12 +1512,12 @@ class SmartWakePanel extends HTMLElement {
       });
       await this._fetchAlarms();
       if (res && res.snoozed) {
-        this._showToast("💤 Wecker pausiert und schlummert...");
+        this._showToast(this._t("💤 Alarm paused and snoozing...", "💤 Wecker pausiert und schlummert..."));
       } else {
-        this._showToast("⚠️ Schlummern nicht möglich oder Maximum erreicht!", 4000);
+        this._showToast(this._t("⚠️ Snooze not possible or maximum limit reached!", "⚠️ Schlummern nicht möglich oder Maximum erreicht!"), 4000);
       }
     } catch (err) {
-      this._showToast("⚠️ Schlummern nicht möglich oder Maximum erreicht!", 4000);
+      this._showToast(this._t("⚠️ Snooze not possible or maximum limit reached!", "⚠️ Schlummern nicht möglich oder Maximum erreicht!"), 4000);
     }
   }
 
@@ -1486,9 +1530,9 @@ class SmartWakePanel extends HTMLElement {
       });
       await this._fetchAlarms();
       if (res && res.snoozed) {
-        this._showToast("🛡️ Anti-Cheat aktiv: Quittierung wirkt als Schlummern, bis Aufsteh-Beweis (Bewegungsmelder, Leistungsmesser oder NFC) erbracht ist!", 5000);
+        this._showToast(this._t("🛡️ Anti-Cheat active: Dismiss acts as snooze until get-out-of-bed proof (motion sensor, power meter or NFC) is detected!", "🛡️ Anti-Cheat aktiv: Quittierung wirkt als Schlummern, bis Aufsteh-Beweis (Bewegungsmelder, Leistungsmesser oder NFC) erbracht ist!"), 5000);
       } else if (res && res.dismissed) {
-        this._showToast("🛑 Wecker erfolgreich beendet und quittiert!", 3000);
+        this._showToast(this._t("🛑 Alarm successfully stopped and dismissed!", "🛑 Wecker erfolgreich beendet und quittiert!"), 3000);
       }
     } catch (err) {
       console.error("Dismiss failed:", err);
@@ -1516,7 +1560,7 @@ class SmartWakePanel extends HTMLElement {
       }, 1000);
     } catch (err) {
       console.error("Dry run test failed:", err);
-      alert("Fehler beim Starten des Zeitraffer-Tests: " + (err.message || err));
+      alert(this._t("Error starting timelapse test: ", "Fehler beim Starten des Zeitraffer-Tests: ") + (err.message || err));
     }
   }
 
@@ -1541,7 +1585,7 @@ class SmartWakePanel extends HTMLElement {
       }, 2000);
     } catch (err) {
       console.error("Full test failed:", err);
-      alert("Fehler beim Starten des vollen Testlaufs: " + (err.message || err));
+      alert(this._t("Error starting full test run: ", "Fehler beim Starten des vollen Testlaufs: ") + (err.message || err));
     }
   }
 
@@ -1631,7 +1675,7 @@ class SmartWakePanel extends HTMLElement {
       const sumCfg = (alarm && alarm.config_summary) || {};
 
       this._editConfig = {
-        name: alarm ? alarm.name : "Wecker",
+        name: alarm ? alarm.name : this._t("Alarm", "Wecker"),
         time: alarm ? alarm.time : "06:30",
         enabled: alarm ? Boolean(alarm.enabled) : true,
         days: alarm && alarm.days ? [...alarm.days] : ["mon", "tue", "wed", "thu", "fri"],
@@ -1682,7 +1726,7 @@ class SmartWakePanel extends HTMLElement {
         main_tts_enabled: Boolean(rawCfg.main_tts_enabled ?? sumCfg.main_tts_enabled ?? false),
         main_tts_delay: rawCfg.main_tts_delay ?? sumCfg.main_tts_delay ?? 15,
         main_tts_volume: Math.round((rawCfg.main_tts_volume ?? sumCfg.main_tts_volume ?? 0.6) * 100),
-        main_tts_message: rawCfg.main_tts_message ?? "Guten Morgen! Es ist {time} Uhr, draußen sind es {temp}°C.",
+        main_tts_message: rawCfg.main_tts_message ?? this._t("Good morning! It is {time}, outside temperature is {temp}°C.", "Guten Morgen! Es ist {time} Uhr, draußen sind es {temp}°C."),
         main_tts_engine: rawCfg.main_tts_engine ?? "",
         main_script_entity: rawCfg.main_script_entity ?? "",
 
@@ -1721,7 +1765,7 @@ class SmartWakePanel extends HTMLElement {
       };
     } else {
       this._editConfig = {
-        name: "Neuer Wecker",
+        name: this._t("New Alarm", "Neuer Wecker"),
         time: "06:30",
         enabled: true,
         days: ["mon", "tue", "wed", "thu", "fri"],
@@ -1761,7 +1805,7 @@ class SmartWakePanel extends HTMLElement {
         main_tts_enabled: false,
         main_tts_delay: 15,
         main_tts_volume: 60,
-        main_tts_message: "Guten Morgen! Es ist {time} Uhr, draußen sind es {temp}°C.",
+        main_tts_message: this._t("Good morning! It is {time}, outside temperature is {temp}°C.", "Guten Morgen! Es ist {time} Uhr, draußen sind es {temp}°C."),
         main_tts_engine: "",
         main_script_entity: "",
 
@@ -1939,7 +1983,7 @@ class SmartWakePanel extends HTMLElement {
     const btnSave = this.shadowRoot ? this.shadowRoot.getElementById("btnSaveModal") : null;
     if (btnSave) {
       btnSave.disabled = true;
-      btnSave.textContent = "💾 Speichern...";
+      btnSave.textContent = this._t("💾 Saving...", "💾 Speichern...");
     }
 
     try {
@@ -2038,21 +2082,21 @@ class SmartWakePanel extends HTMLElement {
       this._closeSettingsModal();
       await this._fetchAlarms();
       this._renderDashboard();
-      this._showToast("💾 Einstellungen erfolgreich gespeichert!", 3000);
+      this._showToast(this._t("💾 Settings saved successfully!", "💾 Einstellungen erfolgreich gespeichert!"), 3000);
     } catch (err) {
       console.error("Failed to save alarm settings:", err);
-      alert("Fehler beim Speichern: " + (err.message || err));
+      alert(this._t("Error saving: ", "Fehler beim Speichern: ") + (err.message || err));
       this._saving = false;
       const btnSave = this.shadowRoot ? this.shadowRoot.getElementById("btnSaveModal") : null;
       if (btnSave) {
         btnSave.disabled = false;
-        btnSave.textContent = "💾 Einstellungen speichern";
+        btnSave.textContent = this._t("💾 Save Settings", "💾 Einstellungen speichern");
       }
     }
   }
   async _deleteAlarm(alarmId) {
     if (!this._hass) return;
-    if (!confirm("Möchtest du diesen Smart Wake Wecker wirklich löschen?")) return;
+    if (!confirm(this._t("Do you really want to delete this Smart Wake alarm?", "Möchtest du diesen Smart Wake Wecker wirklich löschen?"))) return;
     try {
       await this._hass.callWS({
         type: "smart_wake/delete_alarm",
@@ -2061,10 +2105,10 @@ class SmartWakePanel extends HTMLElement {
       this._closeSettingsModal();
       await this._fetchAlarms();
       this._renderDashboard();
-      this._showToast("🗑️ Wecker erfolgreich gelöscht!", 3000);
+      this._showToast(this._t("🗑️ Alarm deleted successfully!", "🗑️ Wecker erfolgreich gelöscht!"), 3000);
     } catch (err) {
       console.error("Failed to delete alarm:", err);
-      alert("Fehler beim Löschen: " + (err.message || err));
+      alert(this._t("Error deleting: ", "Fehler beim Löschen: ") + (err.message || err));
     }
   }
 
@@ -2082,30 +2126,35 @@ class SmartWakePanel extends HTMLElement {
     let color = "#78909c";
     let text = status.toUpperCase();
     let pulse = false;
+    const isDe = this._isDe();
 
     if (isFullTest) {
       if (status === "ringing") {
         color = "#e53935";
-        text = phase === "escalation" ? "🔔 TEST: ESKALATION!" : "🔔 TEST: KLINGELT";
+        text = phase === "escalation"
+          ? (isDe ? "🔔 TEST: ESKALATION!" : "🔔 TEST: ESCALATION!")
+          : (isDe ? "🔔 TEST: KLINGELT" : "🔔 TEST: RINGING");
         pulse = true;
       } else if (status === "pre_alarm") {
         color = "#fb8c00";
-        text = "🌅 TEST: PRE-ALARM";
+        text = isDe ? "🌅 TEST: PRE-ALARM" : "🌅 TEST: PRE-ALARM";
         pulse = true;
       } else if (status === "snoozed") {
         color = "#8e24aa";
-        text = "💤 TEST: SCHLUMMERT";
+        text = isDe ? "💤 TEST: SCHLUMMERT" : "💤 TEST: SNOOZED";
         pulse = true;
       } else {
         color = "#e53935";
-        text = "🔔 TESTLAUF AKTIV";
+        text = isDe ? "🔔 TESTLAUF AKTIV" : "🔔 TEST ACTIVE";
         pulse = true;
       }
     } else {
       switch (status) {
         case "ringing":
           color = "#e53935";
-          text = phase === "escalation" ? "🔔 ESKALATION!" : "🔔 KLINGELT";
+          text = phase === "escalation"
+            ? (isDe ? "🔔 ESKALATION!" : "🔔 ESCALATION!")
+            : (isDe ? "🔔 KLINGELT" : "🔔 RINGING");
           pulse = true;
           break;
         case "pre_alarm":
@@ -2115,19 +2164,19 @@ class SmartWakePanel extends HTMLElement {
           break;
         case "snoozed":
           color = "#8e24aa";
-          text = "💤 SCHLUMMERT";
+          text = isDe ? "💤 SCHLUMMERT" : "💤 SNOOZED";
           break;
         case "skipped":
           color = "#546e7a";
-          text = "⏭️ ÜBERSPRUNGEN";
+          text = isDe ? "⏭️ ÜBERSPRUNGEN" : "⏭️ SKIPPED";
           break;
         case "dismissed":
           color = "#43a047";
-          text = "✅ QUITTIERT";
+          text = isDe ? "✅ QUITTIERT" : "✅ DISMISSED";
           break;
         case "idle":
           color = "#2e7d32";
-          text = "AKTIV (IDLE)";
+          text = isDe ? "AKTIV (IDLE)" : "ACTIVE (IDLE)";
           break;
       }
     }
@@ -2195,15 +2244,17 @@ class SmartWakePanel extends HTMLElement {
     if (!stateObj) return "";
     let val = stateObj.state;
     const unit = stateObj.attributes?.unit_of_measurement;
-    if (val === "on") val = "an";
-    else if (val === "off") val = "aus";
-    else if (val === "home") val = "zuhause";
-    else if (val === "not_home") val = "abwesend";
-    else if (val === "unavailable") val = "nicht verfügbar";
-    else if (val === "unknown") val = "unbekannt";
-    else if (val === "playing") val = "spielt";
-    else if (val === "paused") val = "pausiert";
-    else if (val === "idle") val = "standby";
+    if (this._isDe()) {
+      if (val === "on") val = "an";
+      else if (val === "off") val = "aus";
+      else if (val === "home") val = "zuhause";
+      else if (val === "not_home") val = "abwesend";
+      else if (val === "unavailable") val = "nicht verfügbar";
+      else if (val === "unknown") val = "unbekannt";
+      else if (val === "playing") val = "spielt";
+      else if (val === "paused") val = "pausiert";
+      else if (val === "idle") val = "standby";
+    }
 
     if (unit) return `${val} ${unit}`;
     return val;
@@ -2328,8 +2379,9 @@ class SmartWakePanel extends HTMLElement {
             const iconSpan = chip.querySelector(".entity-chip-icon");
             if (iconSpan) iconSpan.textContent = "⚠️";
           }
-          if (stateSpan && stateSpan.textContent !== "Nicht in HA gefunden") {
-            stateSpan.textContent = "Nicht in HA gefunden";
+          const notFoundText = this._t("Not found in HA", "Nicht in HA gefunden");
+          if (stateSpan && stateSpan.textContent !== notFoundText) {
+            stateSpan.textContent = notFoundText;
           }
         }
       });
@@ -2347,16 +2399,16 @@ class SmartWakePanel extends HTMLElement {
             <span class="entity-chip-icon">${icon}</span>
             <span class="entity-chip-name">${name}</span>
             <span class="entity-chip-state">${stateStr}</span>
-            <button type="button" class="entity-chip-remove" data-remove="${entId}" title="${entId} entfernen">&times;</button>
+            <button type="button" class="entity-chip-remove" data-remove="${entId}" title="${this._t(`Remove ${entId}`, `${entId} entfernen`)}">&times;</button>
           </div>
         `;
       } else {
         return `
-          <div class="entity-chip unverified" data-entity-id="${entId}" title="Nicht in Home Assistant gefunden">
+          <div class="entity-chip unverified" data-entity-id="${entId}" title="${this._t("Not found in Home Assistant", "Nicht in Home Assistant gefunden")}">
             <span class="entity-chip-icon">⚠️</span>
             <span class="entity-chip-name">${entId}</span>
-            <span class="entity-chip-state">Nicht in HA gefunden</span>
-            <button type="button" class="entity-chip-remove" data-remove="${entId}" title="${entId} entfernen">&times;</button>
+            <span class="entity-chip-state">${this._t("Not found in HA", "Nicht in HA gefunden")}</span>
+            <button type="button" class="entity-chip-remove" data-remove="${entId}" title="${this._t(`Remove ${entId}`, `${entId} entfernen`)}">&times;</button>
           </div>
         `;
       }
@@ -2443,7 +2495,7 @@ class SmartWakePanel extends HTMLElement {
 
       const renderDropdown = () => {
         if (currentResults.length === 0) {
-          dropdown.innerHTML = `<div class="autocomplete-no-results">Keine passenden Entities gefunden</div>`;
+          dropdown.innerHTML = `<div class="autocomplete-no-results">${this._t("No matching entities found", "Keine passenden Entities gefunden")}</div>`;
         } else {
           dropdown.innerHTML = currentResults.map((s, idx) => {
             const icon = this._getEntityDomainIcon(s.entity_id, s.attributes);
@@ -2551,8 +2603,8 @@ class SmartWakePanel extends HTMLElement {
           <button
             class="logo-menu-btn"
             id="btnToggleMenu"
-            title="Seitenmenü öffnen (Sidebar)"
-            aria-label="Seitenmenü öffnen"
+            title="${this._t("Open sidebar menu", "Seitenmenü öffnen (Sidebar)")}"
+            aria-label="${this._t("Open sidebar menu", "Seitenmenü öffnen")}"
           >
             <div class="logo-wrapper">
               <img
@@ -2562,7 +2614,7 @@ class SmartWakePanel extends HTMLElement {
                 onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
               />
               <span class="logo-fallback" style="display: none;">⏰</span>
-              <div class="menu-icon-badge" title="Seitenmenü öffnen">
+              <div class="menu-icon-badge" title="${this._t("Open sidebar menu", "Seitenmenü öffnen")}">
                 <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor">
                   <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
                 </svg>
@@ -2571,11 +2623,11 @@ class SmartWakePanel extends HTMLElement {
           </button>
           <div>
             <h1>SMART WAKE DASHBOARD</h1>
-            <div class="subtitle">Smarter Wecker mit dynamischen Bedingungen, Phasen-Aktionen & Eskalation</div>
+            <div class="subtitle">${this._t("Smart alarm clock with dynamic conditions, phase actions & escalation", "Smarter Wecker mit dynamischen Bedingungen, Phasen-Aktionen & Eskalation")}</div>
           </div>
         </div>
         <button class="btn-add" id="btnAdd">
-          <span>+</span> Neuer Wecker
+          <span>+</span> ${this._t("New Alarm", "Neuer Wecker")}
         </button>
       </div>
 
@@ -2678,39 +2730,39 @@ class SmartWakePanel extends HTMLElement {
             <div class="modal-title-group">
               <span class="modal-icon">🔔</span>
               <div>
-                <h2 class="modal-title">Voller Testlauf: ${alarm.name}</h2>
-                <div class="modal-subtitle">Wähle die Startphase für den Echtzeit-Testlauf</div>
+                <h2 class="modal-title">${this._t("Full Test Run: ", "Voller Testlauf: ")}${alarm.name}</h2>
+                <div class="modal-subtitle">${this._t("Choose starting phase for real-time test run", "Wähle die Startphase für den Echtzeit-Testlauf")}</div>
               </div>
             </div>
-            <button class="btn-close" id="btnCloseTestModal" title="Schließen">&times;</button>
+            <button class="btn-close" id="btnCloseTestModal" title="${this._t("Close", "Schließen")}">&times;</button>
           </div>
 
           <div class="modal-body" style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
             <div class="test-choice-card" id="btnChoicePreAlarm">
               <div class="test-choice-icon">🌅</div>
               <div class="test-choice-content">
-                <div class="test-choice-title">Phase 1: Pre-Alarm starten</div>
+                <div class="test-choice-title">${this._t("Start Phase 1: Pre-Alarm", "Phase 1: Pre-Alarm starten")}</div>
                 <div class="test-choice-desc">
-                  Startet sanftes Licht & Jalousien (${alarm.pre_alarm_duration} Min.) und wechselt danach automatisch zum Hauptalarm.
+                  ${this._t(`Starts gentle light & blinds (${alarm.pre_alarm_duration} min.) and automatically switches to main alarm afterwards.`, `Startet sanftes Licht & Jalousien (${alarm.pre_alarm_duration} Min.) und wechselt danach automatisch zum Hauptalarm.`)}
                 </div>
               </div>
-              <button class="btn-primary" style="align-self: center; white-space: nowrap; pointer-events: none;">Starten</button>
+              <button class="btn-primary" style="align-self: center; white-space: nowrap; pointer-events: none;">${this._t("Start", "Starten")}</button>
             </div>
 
             <div class="test-choice-card" id="btnChoiceMainAlarm">
               <div class="test-choice-icon">🔔</div>
               <div class="test-choice-content">
-                <div class="test-choice-title">Phase 2: Hauptalarm direkt starten</div>
+                <div class="test-choice-title">${this._t("Start Phase 2: Main Alarm directly", "Phase 2: Hauptalarm direkt starten")}</div>
                 <div class="test-choice-desc">
-                  Startet direkt Audio/TTS, aktiviert Anti-Cheat Quittierungs-Sensoren (Taster, Bewegung, Leistung, NFC) und den Eskalationstimer.
+                  ${this._t("Starts Audio/TTS directly, activates Anti-Cheat dismiss sensors (buttons, motion, power, NFC) and the escalation timer.", "Startet direkt Audio/TTS, aktiviert Anti-Cheat Quittierungs-Sensoren (Taster, Bewegung, Leistung, NFC) und den Eskalationstimer.")}
                 </div>
               </div>
-              <button class="btn-primary" style="align-self: center; white-space: nowrap; background: #e53935; pointer-events: none;">Direkt starten</button>
+              <button class="btn-primary" style="align-self: center; white-space: nowrap; background: #e53935; pointer-events: none;">${this._t("Start Directly", "Direkt starten")}</button>
             </div>
           </div>
 
           <div class="modal-footer" style="justify-content: flex-end;">
-            <button class="btn-cancel" id="btnCancelTestModal">Abbrechen</button>
+            <button class="btn-cancel" id="btnCancelTestModal">${this._t("Cancel", "Abbrechen")}</button>
           </div>
         </div>
       </div>
@@ -2806,19 +2858,19 @@ class SmartWakePanel extends HTMLElement {
 
   _renderBody() {
     if (this._loading) {
-      return `<div style="text-align: center; padding: 40px;">Lade Smart Wake Wecker...</div>`;
+      return `<div style="text-align: center; padding: 40px;">${this._t("Loading Smart Wake alarms...", "Lade Smart Wake Wecker...")}</div>`;
     }
 
     if (this._alarms.length === 0) {
       return `
         <div class="empty-state">
           <div class="empty-icon">⏰</div>
-          <h3>Keine Smart Wake Wecker eingerichtet</h3>
+          <h3>${this._t("No Smart Wake alarms configured", "Keine Smart Wake Wecker eingerichtet")}</h3>
           <p class="subtitle" style="margin-bottom: 20px;">
-            Erstelle deinen ersten smarten Wecker mit Licht-Fade, Audio-Begrüßung und Anti-Verschlaf-Schutz.
+            ${this._t("Create your first smart alarm with light fade-in, audio greeting and anti-oversleep protection.", "Erstelle deinen ersten smarten Wecker mit Licht-Fade, Audio-Begrüßung und Anti-Verschlaf-Schutz.")}
           </p>
           <button class="btn-add" style="margin: 0 auto;" id="btnAddEmpty">
-            <span>+</span> Jetzt Wecker hinzufügen
+            <span>+</span> ${this._t("Add Alarm Now", "Jetzt Wecker hinzufügen")}
           </button>
         </div>
       `;
@@ -2842,10 +2894,21 @@ class SmartWakePanel extends HTMLElement {
       isFullTest;
     const dryRunPct = Math.min(100, (alarm.dry_run_progress / 30) * 100);
 
+    const isDe = this._isDe();
     const cfg = alarm.config_summary || {};
-    const daysStr = (alarm.days || []).map((d) => d.toUpperCase()).join(", ");
+    const dayLabelsMap = {
+      mon: isDe ? "MO" : "MON",
+      tue: isDe ? "DI" : "TUE",
+      wed: isDe ? "MI" : "WED",
+      thu: isDe ? "DO" : "THU",
+      fri: isDe ? "FR" : "FRI",
+      sat: isDe ? "SA" : "SAT",
+      sun: isDe ? "SO" : "SUN",
+    };
+    const daysStr = (alarm.days || []).map((d) => dayLabelsMap[d.toLowerCase()] || d.toUpperCase()).join(", ");
     const isMobile = alarm.alarm_source === "mobile" && alarm.next_alarm;
     const displayTime = isMobile ? this._formatTime(alarm.next_alarm) : alarm.time;
+    const displayTimeStr = isMobile ? `${displayTime}${isDe ? " Uhr" : ""} 📱` : `${displayTime}${isDe ? " Uhr" : ""}`;
 
     return `
       <div class="alarm-card">
@@ -2865,54 +2928,54 @@ class SmartWakePanel extends HTMLElement {
         </div>
 
         <div class="time-row">
-          <div class="big-time" id="time-${alarm.id}" style="cursor: pointer;" title="Weckzeit ändern (Klicken öffnet Einstellungen)">${isMobile ? `${displayTime} Uhr 📱` : `${alarm.time} Uhr`}</div>
+          <div class="big-time" id="time-${alarm.id}" style="cursor: pointer;" title="${this._t("Change alarm time (click opens settings)", "Weckzeit ändern (Klicken öffnet Einstellungen)")}">${displayTimeStr}</div>
           <div class="countdown-chip" id="countdown-${alarm.id}">
             ⏳ ${alarm.countdown_text}
           </div>
         </div>
 
         <div class="meta-tags">
-          <div class="tag">📅 Tage: ${daysStr}</div>
-          ${cfg.workday_only ? `<div class="tag workday">💼 Nur Werktage: AN</div>` : ""}
-          ${cfg.person_home_required ? `<div class="tag">👤 Anwesenheit: Erforderlich</div>` : ""}
+          <div class="tag">📅 ${this._t("Days:", "Tage:")} ${daysStr}</div>
+          ${cfg.workday_only ? `<div class="tag workday">💼 ${this._t("Workdays only: ON", "Nur Werktage: AN")}</div>` : ""}
+          ${cfg.person_home_required ? `<div class="tag">👤 ${this._t("Presence: Required", "Anwesenheit: Erforderlich")}</div>` : ""}
           ${
             alarm.alarm_source === "mobile" && alarm.next_alarm
-              ? `<div class="tag highlight">📱 Handy-Wecker aktiv (${this._formatTime(alarm.next_alarm)} Uhr)</div>`
+              ? `<div class="tag highlight">📱 ${this._t(`Phone alarm active (${this._formatTime(alarm.next_alarm)})`, `Handy-Wecker aktiv (${this._formatTime(alarm.next_alarm)} Uhr)`)}</div>`
               : (alarm.alarm_source_mode === "mobile_only" || cfg.alarm_source_mode === "mobile_only")
-              ? `<div class="tag">📱 Handy-Wecker: Wartet auf Alarm</div>`
+              ? `<div class="tag">📱 ${this._t("Phone alarm: Waiting for alarm", "Handy-Wecker: Wartet auf Alarm")}</div>`
               : (cfg.mobile_alarm_entity && (alarm.alarm_source_mode === "mobile_priority" || cfg.alarm_source_mode === "mobile_priority"))
-              ? `<div class="tag">📱 Handy-Wecker: Nicht aktiv (Fallback: ${alarm.time} Uhr)</div>`
+              ? `<div class="tag">📱 ${this._t(`Phone alarm: Inactive (Fallback: ${alarm.time})`, `Handy-Wecker: Nicht aktiv (Fallback: ${alarm.time} Uhr)`)}</div>`
               : ""
           }
           ${
             alarm.dynamic_offset_minutes > 0
-              ? `<div class="tag highlight">❄️ Wetter-Offset: -${alarm.dynamic_offset_minutes} Min (${alarm.offset_reasons.join(", ")})</div>`
+              ? `<div class="tag highlight">❄️ ${this._t(`Weather offset: -${alarm.dynamic_offset_minutes} min (${alarm.offset_reasons.join(", ")})`, `Wetter-Offset: -${alarm.dynamic_offset_minutes} Min (${alarm.offset_reasons.join(", ")})`)}</div>`
               : ""
           }
         </div>
 
         <div class="timeline">
-          <div class="timeline-title">Ablauf & Phasen</div>
+          <div class="timeline-title">${this._t("Schedule & Phases", "Ablauf & Phasen")}</div>
           <div class="timeline-item">
             <div class="timeline-time" id="timeline-p1-${alarm.id}">${this._formatTime(alarm.pre_alarm_time)}</div>
             <div class="timeline-dot p1"></div>
-            <div class="timeline-desc">Phase 1: Pre-Alarm (${alarm.pre_alarm_duration} Min sanftes Erwachen)</div>
+            <div class="timeline-desc">${this._t(`Phase 1: Pre-Alarm (${alarm.pre_alarm_duration} min gentle wake-up)`, `Phase 1: Pre-Alarm (${alarm.pre_alarm_duration} Min sanftes Erwachen)`)}</div>
           </div>
           <div class="timeline-item">
             <div class="timeline-time" id="timeline-p2-${alarm.id}">${displayTime}</div>
             <div class="timeline-dot p2"></div>
-            <div class="timeline-desc">Phase 2: Hauptalarm (Audio Fade-in + TTS Morgenbriefing)</div>
+            <div class="timeline-desc">${this._t("Phase 2: Main Alarm (Audio fade-in + TTS morning briefing)", "Phase 2: Hauptalarm (Audio Fade-in + TTS Morgenbriefing)")}</div>
           </div>
           <div class="timeline-item">
             <div class="timeline-time">+${cfg.escalation_delay || 10}m</div>
             <div class="timeline-dot p3"></div>
-            <div class="timeline-desc">Phase 3: Eskalation (Volles Licht 100%, sanfter Audio-Anstieg auf ${Math.round((cfg.escalation_volume || 0.9) * 100)}%)</div>
+            <div class="timeline-desc">${this._t(`Phase 3: Escalation (Full light 100%, smooth audio increase to ${Math.round((cfg.escalation_volume || 0.9) * 100)}%)`, `Phase 3: Eskalation (Volles Licht 100%, sanfter Audio-Anstieg auf ${Math.round((cfg.escalation_volume || 0.9) * 100)}%)`)}</div>
           </div>
         </div>
 
         <div class="anti-cheat-box">
-          <div>🛡️ <b>Quittierung:</b> Taster, Bad-Bewegungsmelder, Kaffeemaschine oder Schalter/Helfer</div>
-          <div>💤 <b>Schlummern:</b> ${alarm.snooze_duration} Min (Max: ${alarm.max_snooze_count}x | Aktuell: ${alarm.snooze_count})</div>
+          <div>🛡️ <b>${this._t("Dismiss:", "Quittierung:")}</b> ${this._t("Button, bathroom motion, coffee maker or helper switch", "Taster, Bad-Bewegungsmelder, Kaffeemaschine oder Schalter/Helfer")}</div>
+          <div>💤 <b>${this._t("Snooze:", "Schlummern:")}</b> ${this._t(`${alarm.snooze_duration} min (Max: ${alarm.max_snooze_count}x | Current: ${alarm.snooze_count})`, `${alarm.snooze_duration} Min (Max: ${alarm.max_snooze_count}x | Aktuell: ${alarm.snooze_count})`)}</div>
         </div>
 
         ${
@@ -2920,14 +2983,14 @@ class SmartWakePanel extends HTMLElement {
             ? `
             <div class="snooze-anti-cheat-banner">
               <div style="font-weight: 600; font-size: 13px; color: #ffb74d; display: flex; align-items: center; justify-content: space-between;">
-                <span id="snooze-banner-text-${alarm.id}">💤 Schlummermodus aktiv (${alarm.countdown_text})</span>
+                <span id="snooze-banner-text-${alarm.id}">💤 ${this._t(`Snooze mode active (${alarm.countdown_text})`, `Schlummermodus aktiv (${alarm.countdown_text})`)}</span>
                 <span class="badge" style="background: #fb8c00; font-size: 10px; padding: 2px 7px;">SNOOZE ${alarm.snooze_count}/${alarm.max_snooze_count}</span>
               </div>
               <div style="font-size: 12px; margin-top: 5px; color: #ffe0b2;">
                 ${
                   alarm.has_anti_cheat
-                    ? "🛡️ <b>Anti-Cheat aktiv:</b> Quittierung wirkt als Schlummern. Endgültiges Beenden erfolgt automatisch bei Aufsteh-Beweis (Bad-Bewegungsmelder, Kaffeemaschine, Schalter/Helfer oder NFC-Tag)."
-                    : "Der Wecker pausiert vorübergehend und weckt nach Ablauf der Schlummerzeit erneut."
+                    ? this._t("🛡️ <b>Anti-Cheat active:</b> Dismiss acts as snooze until get-out-of-bed proof (bathroom motion, coffee maker, helper switch or NFC tag) is detected.", "🛡️ <b>Anti-Cheat aktiv:</b> Quittierung wirkt als Schlummern. Endgültiges Beenden erfolgt automatisch bei Aufsteh-Beweis (Bad-Bewegungsmelder, Kaffeemaschine, Schalter/Helfer oder NFC-Tag).")
+                    : this._t("The alarm is temporarily paused and will sound again after snooze duration.", "Der Wecker pausiert vorübergehend und weckt nach Ablauf der Schlummerzeit erneut.")
                 }
               </div>
             </div>
@@ -2940,12 +3003,20 @@ class SmartWakePanel extends HTMLElement {
             ? `
             <div class="full-test-banner">
               <div style="font-weight: 600; font-size: 13px; color: #ff8a80; display: flex; align-items: center; justify-content: space-between;">
-                <span>🔔 Echter Testlauf in Echtzeit aktiv!</span>
+                <span>🔔 ${this._t("Live real-time test run active!", "Echter Testlauf in Echtzeit aktiv!")}</span>
                 <span class="badge" style="background: #e53935; font-size: 10px; padding: 2px 7px;">LIVE TEST</span>
               </div>
               <div style="font-size: 12px; color: #cfd8dc; margin-top: 5px; line-height: 1.4;">
-                Aktiver Zustand: <b>${alarm.status === "snoozed" ? "💤 Schlummert (Snooze)" : alarm.active_phase === "pre_alarm" ? "Phase 1 (Pre-Alarm)" : alarm.active_phase === "escalation" ? "Phase 3 (Eskalation)" : "Phase 2 (Hauptalarm)"}</b><br>
-                <span>💡 Alle Audio- & Licht-Trigger laufen in Echtzeit. Teste Schlummern oder Quittierung per Button, Bewegungsmelder, Leistungsmesser oder NFC!</span>
+                ${this._t("Active state:", "Aktiver Zustand:")} <b>${
+                  alarm.status === "snoozed"
+                    ? this._t("💤 Snoozing", "💤 Schlummert (Snooze)")
+                    : alarm.active_phase === "pre_alarm"
+                    ? "Phase 1 (Pre-Alarm)"
+                    : alarm.active_phase === "escalation"
+                    ? this._t("Phase 3 (Escalation)", "Phase 3 (Eskalation)")
+                    : this._t("Phase 2 (Main Alarm)", "Phase 2 (Hauptalarm)")
+                }</b><br>
+                <span>💡 ${this._t("All audio and light triggers run in real time. Test snooze or dismiss via button, motion sensor, power meter or NFC!", "Alle Audio- & Licht-Trigger laufen in Echtzeit. Teste Schlummern oder Quittierung per Button, Bewegungsmelder, Leistungsmesser oder NFC!")}</span>
               </div>
             </div>
             `
@@ -2957,7 +3028,7 @@ class SmartWakePanel extends HTMLElement {
             ? `
             <div>
               <div style="font-size: 12px; color: #ffb74d; display: flex; justify-content: space-between;">
-                <span id="dryrun-text-${alarm.id}">⏱️ Testlauf Zeitraffer: ${alarm.dry_run_progress}s / 30s</span>
+                <span id="dryrun-text-${alarm.id}">⏱️ ${this._t(`Timelapse test run: ${alarm.dry_run_progress}s / 30s`, `Testlauf Zeitraffer: ${alarm.dry_run_progress}s / 30s`)}</span>
                 <span id="dryrun-phase-${alarm.id}">${alarm.active_phase.toUpperCase()}</span>
               </div>
               <div class="dry-run-progress">
@@ -2971,21 +3042,21 @@ class SmartWakePanel extends HTMLElement {
         <div class="actions-bar">
           <div class="btn-group">
             <button class="btn-action" id="edit-${alarm.id}">
-              ⚙️ Einstellungen
+              ⚙️ ${this._t("Settings", "Einstellungen")}
             </button>
             ${
               isTesting
                 ? `
                 <button class="btn-action btn-stop-test" id="stop-test-${alarm.id}">
-                  ⏹️ Testlauf beenden
+                  ⏹️ ${this._t("Stop Test", "Testlauf beenden")}
                 </button>
                 `
                 : `
-                <button class="btn-action btn-full-test" id="full-test-${alarm.id}" title="Startet einen echten Echtzeit-Testlauf mit allen Sensoren, Audio & Quittierung">
-                  🔔 Voller Testlauf
+                <button class="btn-action btn-full-test" id="full-test-${alarm.id}" title="${this._t("Starts a live real-time test run with all sensors, audio & dismiss actions", "Startet einen echten Echtzeit-Testlauf mit allen Sensoren, Audio & Quittierung")}">
+                  🔔 ${this._t("Full Test", "Voller Testlauf")}
                 </button>
-                <button class="btn-action" id="dry-run-${alarm.id}" title="Simuliert alle 3 Phasen beschleunigt in 30 Sekunden">
-                  ⚡ 30s Zeitraffer
+                <button class="btn-action" id="dry-run-${alarm.id}" title="${this._t("Simulates all 3 phases accelerated in 30 seconds", "Simuliert alle 3 Phasen beschleunigt in 30 Sekunden")}">
+                  ⚡ ${this._t("30s Timelapse", "30s Zeitraffer")}
                 </button>
                 `
             }
@@ -2996,10 +3067,10 @@ class SmartWakePanel extends HTMLElement {
               isRinging
                 ? `
                 <button class="btn-action btn-snooze" id="snooze-${alarm.id}" ${alarm.status === "snoozed" ? "disabled style='opacity: 0.6; cursor: not-allowed;'" : ""}>
-                  💤 ${alarm.status === "snoozed" ? "Schlummert..." : "Schlummern"}
+                  💤 ${alarm.status === "snoozed" ? this._t("Snoozing...", "Schlummert...") : this._t("Snooze", "Schlummern")}
                 </button>
                 <button class="btn-action btn-dismiss" id="dismiss-${alarm.id}">
-                  🛑 Quittieren
+                  🛑 ${this._t("Dismiss", "Quittieren")}
                 </button>
                 `
                 : ""
@@ -3024,20 +3095,20 @@ class SmartWakePanel extends HTMLElement {
             <div class="modal-title-group">
               <span class="modal-icon">⚙️</span>
               <div>
-                <h2 class="modal-title">${isNew ? "Neuen Wecker einrichten" : "Wecker konfigurieren: " + (cfg.name || "")}</h2>
-                <div class="modal-subtitle">Bequem alle Parameter direkt im Smart Wake Side-Panel anpassen</div>
+                <h2 class="modal-title">${isNew ? this._t("Configure New Alarm", "Neuen Wecker einrichten") : this._t("Configure Alarm: ", "Wecker konfigurieren: ") + (cfg.name || "")}</h2>
+                <div class="modal-subtitle">${this._t("Conveniently adjust all parameters directly in the Smart Wake panel", "Bequem alle Parameter direkt im Smart Wake Side-Panel anpassen")}</div>
               </div>
             </div>
-            <button class="btn-close" id="btnCloseModal" title="Schließen">&times;</button>
+            <button class="btn-close" id="btnCloseModal" title="${this._t("Close", "Schließen")}">&times;</button>
           </div>
 
           <div class="modal-tabs">
-            <button class="tab-btn ${this._activeTab === "general" ? "active" : ""}" data-tab="general">⏰ Allgemein</button>
-            <button class="tab-btn ${this._activeTab === "conditions" ? "active" : ""}" data-tab="conditions">🛡️ Bedingungen</button>
+            <button class="tab-btn ${this._activeTab === "general" ? "active" : ""}" data-tab="general">⏰ ${this._t("General", "Allgemein")}</button>
+            <button class="tab-btn ${this._activeTab === "conditions" ? "active" : ""}" data-tab="conditions">🛡️ ${this._t("Conditions", "Bedingungen")}</button>
             <button class="tab-btn ${this._activeTab === "phase1" ? "active" : ""}" data-tab="phase1">🌅 Pre-Alarm</button>
-            <button class="tab-btn ${this._activeTab === "phase2" ? "active" : ""}" data-tab="phase2">🔔 Hauptalarm</button>
-            <button class="tab-btn ${this._activeTab === "phase3" ? "active" : ""}" data-tab="phase3">⚡ Eskalation</button>
-            <button class="tab-btn ${this._activeTab === "anti_cheat" ? "active" : ""}" data-tab="anti_cheat">🛑 Quittierung</button>
+            <button class="tab-btn ${this._activeTab === "phase2" ? "active" : ""}" data-tab="phase2">🔔 ${this._t("Main Alarm", "Hauptalarm")}</button>
+            <button class="tab-btn ${this._activeTab === "phase3" ? "active" : ""}" data-tab="phase3">⚡ ${this._t("Escalation", "Eskalation")}</button>
+            <button class="tab-btn ${this._activeTab === "anti_cheat" ? "active" : ""}" data-tab="anti_cheat">🛑 ${this._t("Dismiss", "Quittierung")}</button>
           </div>
 
           <div class="modal-body" id="modalBody">
@@ -3046,12 +3117,12 @@ class SmartWakePanel extends HTMLElement {
 
           <div class="modal-footer">
             <div>
-              ${!isNew ? `<button class="btn-delete" id="btnDeleteModal">🗑️ Wecker löschen</button>` : ""}
+              ${!isNew ? `<button class="btn-delete" id="btnDeleteModal">🗑️ ${this._t("Delete Alarm", "Wecker löschen")}</button>` : ""}
             </div>
             <div class="modal-footer-right">
-              <button class="btn-cancel" id="btnCancelModal">Abbrechen</button>
+              <button class="btn-cancel" id="btnCancelModal">${this._t("Cancel", "Abbrechen")}</button>
               <button class="btn-save" id="btnSaveModal" ${this._saving ? "disabled" : ""}>
-                ${this._saving ? "💾 Speichern..." : "💾 Einstellungen speichern"}
+                ${this._saving ? this._t("💾 Saving...", "💾 Speichern...") : this._t("💾 Save Settings", "💾 Einstellungen speichern")}
               </button>
             </div>
           </div>
@@ -3068,21 +3139,21 @@ class SmartWakePanel extends HTMLElement {
         return `
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label" for="f_name">Wecker-Name</label>
-              <input class="form-input" id="f_name" type="text" value="${cfg.name || ""}" placeholder="z. B. Wecker Schlafzimmer" required />
-              <span class="form-hint">Eindeutige Bezeichnung dieses Weckers</span>
+              <label class="form-label" for="f_name">${this._t("Alarm Name", "Wecker-Name")}</label>
+              <input class="form-input" id="f_name" type="text" value="${cfg.name || ""}" placeholder="${this._t("e.g. Bedroom Alarm", "z. B. Wecker Schlafzimmer")}" required />
+              <span class="form-hint">${this._t("Unique name for this alarm", "Eindeutige Bezeichnung dieses Weckers")}</span>
             </div>
             <div class="form-group">
-              <label class="form-label" for="f_time">Weckzeit</label>
+              <label class="form-label" for="f_time">${this._t("Alarm Time", "Weckzeit")}</label>
               <input class="form-input" id="f_time" type="time" value="${cfg.time || "06:30"}" required />
-              <span class="form-hint">Uhrzeit des Hauptalarms (HH:MM)</span>
+              <span class="form-hint">${this._t("Time of the main alarm (HH:MM)", "Uhrzeit des Hauptalarms (HH:MM)")}</span>
             </div>
           </div>
 
           <div class="form-checkbox-row">
             <div class="form-checkbox-label">
-              <span>Wecker Aktivieren</span>
-              <span class="form-hint">Legt fest, ob der Wecker aktiv scharfgeschaltet ist</span>
+              <span>${this._t("Enable Alarm", "Wecker Aktivieren")}</span>
+              <span class="form-hint">${this._t("Determines whether the alarm is armed and active", "Legt fest, ob der Wecker aktiv scharfgeschaltet ist")}</span>
             </div>
             <label class="switch-toggle">
               <input type="checkbox" id="f_enabled" ${cfg.enabled ? "checked" : ""}>
@@ -3091,9 +3162,9 @@ class SmartWakePanel extends HTMLElement {
           </div>
 
           <div class="form-group">
-            <label class="form-label">Aktive Wochentage</label>
+            <label class="form-label">${this._t("Active Weekdays", "Aktive Wochentage")}</label>
             <div class="days-selector">
-              ${WEEKDAYS.map(
+              ${this._getWeekdays().map(
                 (d) => `
                 <div class="day-chip ${(cfg.days || []).includes(d.id) ? "active" : ""}" data-day="${d.id}">
                   ${d.label}
@@ -3101,48 +3172,48 @@ class SmartWakePanel extends HTMLElement {
               `
               ).join("")}
             </div>
-            <span class="form-hint">Klicke auf die Tage, an denen der Wecker klingeln soll</span>
+            <span class="form-hint">${this._t("Click on the days when the alarm should ring", "Klicke auf die Tage, an denen der Wecker klingeln soll")}</span>
           </div>
 
-          <div class="form-section-title" style="margin-top: 18px;">📱 Handy-Wecker Synchronisation (Companion App)</div>
+          <div class="form-section-title" style="margin-top: 18px;">📱 ${this._t("Phone Alarm Synchronization (Companion App)", "Handy-Wecker Synchronisation (Companion App)")}</div>
           ${this._renderEntityField(
             "f_mobile_alarm_entity",
-            "Next Alarm Sensor (Mobiltelefon)",
+            this._t("Next Alarm Sensor (Phone)", "Next Alarm Sensor (Mobiltelefon)"),
             cfg.mobile_alarm_entity,
             "sensor.pixel_7_next_alarm",
-            "Optional: Wähle den 'Next Alarm'-Sensor deines Smartphones oder ein input_datetime",
+            this._t("Optional: Select your smartphone's 'Next Alarm' sensor or an input_datetime", "Optional: Wähle den 'Next Alarm'-Sensor deines Smartphones oder ein input_datetime"),
             "sensor,input_datetime",
             false
           )}
           <div class="form-group" style="margin-top: 12px;">
-            <label class="form-label">Weckquellen-Priorität</label>
+            <label class="form-label">${this._t("Alarm Source Priority", "Weckquellen-Priorität")}</label>
             <div class="radio-options-group">
               <label class="radio-option">
                 <input type="radio" name="f_alarm_source_mode" value="mobile_priority" ${(!cfg.alarm_source_mode || cfg.alarm_source_mode === "mobile_priority") ? "checked" : ""}>
                 <div class="radio-label">
-                  <span class="radio-title">Handy-Wecker hat Vorrang, feste Zeit nur als Fallback (empfohlen)</span>
-                  <span class="radio-desc">Wenn ein Wecker auf dem Handy gestellt ist, wird diese Zeit verwendet. Ist kein Handy-Wecker aktiv, gilt die oben eingestellte feste Zeit.</span>
+                  <span class="radio-title">${this._t("Phone alarm has priority, fixed time fallback (recommended)", "Handy-Wecker hat Vorrang, feste Zeit nur als Fallback (empfohlen)")}</span>
+                  <span class="radio-desc">${this._t("Uses phone alarm time when set on smartphone. If no phone alarm is set, uses fixed time above.", "Wenn ein Wecker auf dem Handy gestellt ist, wird diese Zeit verwendet. Ist kein Handy-Wecker aktiv, gilt die oben eingestellte feste Zeit.")}</span>
                 </div>
               </label>
               <label class="radio-option">
                 <input type="radio" name="f_alarm_source_mode" value="earliest" ${cfg.alarm_source_mode === "earliest" ? "checked" : ""}>
                 <div class="radio-label">
-                  <span class="radio-title">Beide aktiv – wer zuerst kommt, gewinnt</span>
-                  <span class="radio-desc">Vergleicht Handy-Wecker und feste Zeit und löst zum früheren Zeitpunkt aus.</span>
+                  <span class="radio-title">${this._t("Both active – earliest alarm wins", "Beide aktiv – wer zuerst kommt, gewinnt")}</span>
+                  <span class="radio-desc">${this._t("Compares phone alarm and fixed time, triggering whichever comes first.", "Vergleicht Handy-Wecker und feste Zeit und löst zum früheren Zeitpunkt aus.")}</span>
                 </div>
               </label>
               <label class="radio-option">
                 <input type="radio" name="f_alarm_source_mode" value="mobile_only" ${cfg.alarm_source_mode === "mobile_only" ? "checked" : ""}>
                 <div class="radio-label">
-                  <span class="radio-title">Nur Handy-Wecker</span>
-                  <span class="radio-desc">Löst nur aus, wenn auf dem Handy ein Wecker aktiv ist. Ohne Handy-Wecker bleibt der Alarm inaktiv.</span>
+                  <span class="radio-title">${this._t("Phone alarm only", "Nur Handy-Wecker")}</span>
+                  <span class="radio-desc">${this._t("Only triggers when an alarm is set on the smartphone. Without a phone alarm, this alarm stays inactive.", "Löst nur aus, wenn auf dem Handy ein Wecker aktiv ist. Ohne Handy-Wecker bleibt der Alarm inaktiv.")}</span>
                 </div>
               </label>
               <label class="radio-option">
                 <input type="radio" name="f_alarm_source_mode" value="fixed_only" ${cfg.alarm_source_mode === "fixed_only" ? "checked" : ""}>
                 <div class="radio-label">
-                  <span class="radio-title">Nur feste Weckzeit</span>
-                  <span class="radio-desc">Ignoriert den Handy-Wecker und weckt ausschließlich zur oben eingestellten festen Uhrzeit.</span>
+                  <span class="radio-title">${this._t("Fixed alarm time only", "Nur feste Weckzeit")}</span>
+                  <span class="radio-desc">${this._t("Ignores phone alarm and rings only at the fixed time configured above.", "Ignoriert den Handy-Wecker und weckt ausschließlich zur oben eingestellten festen Uhrzeit.")}</span>
                 </div>
               </label>
             </div>
@@ -3152,11 +3223,11 @@ class SmartWakePanel extends HTMLElement {
 
       case "conditions":
         return `
-          <div class="form-section-title">Werktage & Kalender</div>
+          <div class="form-section-title">${this._t("Workdays & Calendar", "Werktage & Kalender")}</div>
           <div class="form-checkbox-row">
             <div class="form-checkbox-label">
-              <span>Nur an Werktagen klingeln (Workday Filter)</span>
-              <span class="form-hint">Überspringt Wochenenden und Feiertage automatisch</span>
+              <span>${this._t("Only ring on workdays (Workday Filter)", "Nur an Werktagen klingeln (Workday Filter)")}</span>
+              <span class="form-hint">${this._t("Automatically skips weekends and public holidays", "Überspringt Wochenenden und Feiertage automatisch")}</span>
             </div>
             <label class="switch-toggle">
               <input type="checkbox" id="f_workday_only" ${cfg.workday_only ? "checked" : ""}>
@@ -3164,25 +3235,25 @@ class SmartWakePanel extends HTMLElement {
             </label>
           </div>
 
-          ${this._renderEntityField("f_workday_entity", "Workday Sensor Entity", cfg.workday_entity, "binary_sensor.workday_sensor", "Optional: Eigener Workday Sensor (Standard: binary_sensor.workday_sensor)", "binary_sensor", false)}
+          ${this._renderEntityField("f_workday_entity", "Workday Sensor Entity", cfg.workday_entity, "binary_sensor.workday_sensor", this._t("Optional: Custom Workday sensor (Default: binary_sensor.workday_sensor)", "Optional: Eigener Workday Sensor (Standard: binary_sensor.workday_sensor)"), "binary_sensor", false)}
 
           <div class="form-row">
-            ${this._renderEntityField("f_calendar_entity", "Home Assistant Kalender Entity", cfg.calendar_entity, "calendar.privat", "Optional: Kalender für Schichtpläne, Urlaub oder Schulferien", "calendar", false)}
+            ${this._renderEntityField("f_calendar_entity", this._t("Home Assistant Calendar Entity", "Home Assistant Kalender Entity"), cfg.calendar_entity, "calendar.privat", this._t("Optional: Calendar for shift work, vacation or holidays", "Optional: Kalender für Schichtpläne, Urlaub oder Schulferien"), "calendar", false)}
             <div class="form-group">
-              <label class="form-label" for="f_calendar_behavior">Kalender-Verhalten</label>
+              <label class="form-label" for="f_calendar_behavior">${this._t("Calendar Behavior", "Kalender-Verhalten")}</label>
               <select class="form-select" id="f_calendar_behavior">
-                <option value="none" ${cfg.calendar_behavior === "none" ? "selected" : ""}>Keine Kalender-Bindung</option>
-                <option value="only_if_event" ${cfg.calendar_behavior === "only_if_event" ? "selected" : ""}>Nur wecken wenn Ganztagstermin vorliegt</option>
-                <option value="skip_if_event" ${cfg.calendar_behavior === "skip_if_event" ? "selected" : ""}>Überspringen wenn Termin vorliegt (z. B. Urlaub)</option>
+                <option value="none" ${cfg.calendar_behavior === "none" ? "selected" : ""}>${this._t("Disabled (Always ring)", "Keine Kalender-Bindung")}</option>
+                <option value="only_if_event" ${cfg.calendar_behavior === "only_if_event" ? "selected" : ""}>${this._t("Only ring if all-day event exists", "Nur wecken wenn Ganztagstermin vorliegt")}</option>
+                <option value="skip_if_event" ${cfg.calendar_behavior === "skip_if_event" ? "selected" : ""}>${this._t("Skip alarm if event exists (e.g. vacation)", "Überspringen wenn Termin vorliegt (z. B. Urlaub)")}</option>
               </select>
             </div>
           </div>
 
-          <div class="form-section-title">Anwesenheitstracking</div>
+          <div class="form-section-title">${this._t("Presence Tracking", "Anwesenheitstracking")}</div>
           <div class="form-checkbox-row">
             <div class="form-checkbox-label">
-              <span>Personen-Anwesenheit erforderlich</span>
-              <span class="form-hint">Wecker wird automatisch übersprungen (status: skipped), wenn Person nicht zu Hause ist</span>
+              <span>${this._t("Person presence required", "Personen-Anwesenheit erforderlich")}</span>
+              <span class="form-hint">${this._t("Alarm is automatically skipped if assigned person is not home", "Wecker wird automatisch übersprungen (status: skipped), wenn Person nicht zu Hause ist")}</span>
             </div>
             <label class="switch-toggle">
               <input type="checkbox" id="f_person_home_required" ${cfg.person_home_required ? "checked" : ""}>
@@ -3190,32 +3261,32 @@ class SmartWakePanel extends HTMLElement {
             </label>
           </div>
 
-          ${this._renderEntityField("f_person_entities", "Zugewiesene Personen (Kommagetrennt)", cfg.person_entities, "person.vitali, person.anna", "Mindestens eine dieser Personen muss zu Hause sein", "person", true)}
+          ${this._renderEntityField("f_person_entities", this._t("Assigned Persons (comma-separated)", "Zugewiesene Personen (Kommagetrennt)"), cfg.person_entities, "person.vitali, person.anna", this._t("At least one of these persons must be home", "Mindestens eine dieser Personen muss zu Hause sein"), "person", true)}
 
-          <div class="form-section-title">Dynamische Weckzeitverschiebung (Wetter & Schlaf)</div>
+          <div class="form-section-title">${this._t("Dynamic Shift (Weather & Sleep)", "Dynamische Weckzeitverschiebung (Wetter & Schlaf)")}</div>
           <div class="form-row">
-            ${this._renderEntityField("f_weather_temp_entity", "Außentemperatur-Sensor", cfg.weather_temp_entity, "sensor.aussentemperatur", "Sensor für Frost-Erkennung", "sensor,weather", false)}
+            ${this._renderEntityField("f_weather_temp_entity", this._t("Outdoor Temperature Sensor", "Außentemperatur-Sensor"), cfg.weather_temp_entity, "sensor.aussentemperatur", this._t("Sensor for frost detection", "Sensor für Frost-Erkennung"), "sensor,weather", false)}
             <div class="form-group">
-              <label class="form-label" for="f_weather_temp_threshold">Frost-Schwelle (°C)</label>
+              <label class="form-label" for="f_weather_temp_threshold">${this._t("Frost Threshold (°C)", "Frost-Schwelle (°C)")}</label>
               <input class="form-input" id="f_weather_temp_threshold" type="number" step="0.5" value="${cfg.weather_temp_threshold ?? 0.0}" />
             </div>
           </div>
 
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label" for="f_weather_temp_offset">Frost-Frühwecker Offset (Minuten)</label>
+              <label class="form-label" for="f_weather_temp_offset">${this._t("Frost Early Wake-up Offset (Minutes)", "Frost-Frühwecker Offset (Minuten)")}</label>
               <input class="form-input" id="f_weather_temp_offset" type="number" value="${cfg.weather_temp_offset ?? 15}" />
-              <span class="form-hint">Weckt X Minuten früher zum Scheiben kratzen</span>
+              <span class="form-hint">${this._t("Wakes X minutes earlier to de-ice car windshield", "Weckt X Minuten früher zum Scheiben kratzen")}</span>
             </div>
-            ${this._renderEntityField("f_weather_rain_entity", "Regensensor Entity", cfg.weather_rain_entity, "binary_sensor.regen", "Sensor für Regen-Offset", "binary_sensor,sensor,weather", false)}
+            ${this._renderEntityField("f_weather_rain_entity", this._t("Rain Sensor Entity", "Regensensor Entity"), cfg.weather_rain_entity, "binary_sensor.regen", this._t("Sensor for rain offset", "Sensor für Regen-Offset"), "binary_sensor,sensor,weather", false)}
           </div>
 
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label" for="f_weather_rain_offset">Regen-Offset (Minuten)</label>
+              <label class="form-label" for="f_weather_rain_offset">${this._t("Rain Offset (Minutes)", "Regen-Offset (Minuten)")}</label>
               <input class="form-input" id="f_weather_rain_offset" type="number" value="${cfg.weather_rain_offset ?? 10}" />
             </div>
-            ${this._renderEntityField("f_sleep_stage_entity", "Sleep-Tracker Sensor", cfg.sleep_stage_entity, "sensor.withings_sleep_stage", "Löst in Leichtschlafphase innerhalb von " + (cfg.sleep_stage_window || 30) + " Min vor Weckzeit aus", "sensor,binary_sensor", false)}
+            ${this._renderEntityField("f_sleep_stage_entity", this._t("Sleep Tracker Sensor", "Sleep-Tracker Sensor"), cfg.sleep_stage_entity, "sensor.withings_sleep_stage", this._t("Triggers in light sleep phase within " + (cfg.sleep_stage_window || 30) + " min before alarm time", "Löst in Leichtschlafphase innerhalb von " + (cfg.sleep_stage_window || 30) + " Min vor Weckzeit aus"), "sensor,binary_sensor", false)}
           </div>
         `;
 
@@ -3223,8 +3294,8 @@ class SmartWakePanel extends HTMLElement {
         return `
           <div class="form-checkbox-row">
             <div class="form-checkbox-label">
-              <span>Phase 1 (Pre-Alarm / Sanftes Wecken) aktivieren</span>
-              <span class="form-hint">Startet sanft vor der Weckzeit mit Licht und Rollos</span>
+              <span>${this._t("Enable Phase 1 (Pre-Alarm / Gentle Wake-up)", "Phase 1 (Pre-Alarm / Sanftes Wecken) aktivieren")}</span>
+              <span class="form-hint">${this._t("Starts gently before alarm time with lights and blinds", "Startet sanft vor der Weckzeit mit Licht und Rollos")}</span>
             </div>
             <label class="switch-toggle">
               <input type="checkbox" id="f_pre_alarm_enabled" ${cfg.pre_alarm_enabled ? "checked" : ""}>
@@ -3233,61 +3304,61 @@ class SmartWakePanel extends HTMLElement {
           </div>
 
           <div class="form-group">
-            <label class="form-label" for="f_pre_alarm_duration">Vorlaufzeit (Minuten vor Weckzeit)</label>
+            <label class="form-label" for="f_pre_alarm_duration">${this._t("Lead Time (Minutes before alarm time)", "Vorlaufzeit (Minuten vor Weckzeit)")}</label>
             <input class="form-input" id="f_pre_alarm_duration" type="number" min="1" max="60" value="${cfg.pre_alarm_duration ?? 15}" />
-            <span class="form-hint">Z. B. 15 Minuten vor dem Hauptalarm beginnen</span>
+            <span class="form-hint">${this._t("e.g. start 15 minutes before the main alarm", "Z. B. 15 Minuten vor dem Hauptalarm beginnen")}</span>
           </div>
 
-          <div class="form-section-title">Licht-Transition</div>
-          ${this._renderEntityField("f_pre_alarm_light_entities", "Dimmbare Licht-Entities (Kommagetrennt)", cfg.pre_alarm_light_entities, "light.nachttisch_links, light.nachttisch_rechts", "Leuchten für sanften Sonnenaufgang-Fade-in", "light", true)}
+          <div class="form-section-title">${this._t("Light Transition", "Licht-Transition")}</div>
+          ${this._renderEntityField("f_pre_alarm_light_entities", this._t("Dimmable Light Entities (comma-separated)", "Dimmbare Licht-Entities (Kommagetrennt)"), cfg.pre_alarm_light_entities, "light.nachttisch_links, light.nachttisch_rechts", this._t("Lights for smooth sunrise fade-in", "Leuchten für sanften Sonnenaufgang-Fade-in"), "light", true)}
 
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label" for="f_pre_alarm_light_start_brightness">Start-Helligkeit (%)</label>
+              <label class="form-label" for="f_pre_alarm_light_start_brightness">${this._t("Start Brightness (%)", "Start-Helligkeit (%)")}</label>
               <input class="form-input" id="f_pre_alarm_light_start_brightness" type="number" min="1" max="100" value="${cfg.pre_alarm_light_start_brightness ?? 1}" />
             </div>
             <div class="form-group">
-              <label class="form-label" for="f_pre_alarm_light_end_brightness">Ziel-Helligkeit (%)</label>
+              <label class="form-label" for="f_pre_alarm_light_end_brightness">${this._t("Target Brightness (%)", "Ziel-Helligkeit (%)")}</label>
               <input class="form-input" id="f_pre_alarm_light_end_brightness" type="number" min="1" max="100" value="${cfg.pre_alarm_light_end_brightness ?? 80}" />
             </div>
           </div>
 
-          <div class="form-section-title">Rollos & Jalousien</div>
+          <div class="form-section-title">${this._t("Covers & Blinds", "Rollos & Jalousien")}</div>
           <div class="form-row">
-            ${this._renderEntityField("f_pre_alarm_cover_entities", "Rollos / Jalousien Entities", cfg.pre_alarm_cover_entities, "cover.schlafzimmer", "Z. B. 20% für sanftes Kippen der Lamellen", "cover", true)}
+            ${this._renderEntityField("f_pre_alarm_cover_entities", this._t("Cover / Blinds Entities", "Rollos / Jalousien Entities"), cfg.pre_alarm_cover_entities, "cover.schlafzimmer", this._t("e.g. 20% to tilt blind slats open gently", "Z. B. 20% für sanftes Kippen der Lamellen"), "cover", true)}
             <div class="form-group">
-              <label class="form-label" for="f_pre_alarm_cover_position">Zielposition (% geöffnet)</label>
+              <label class="form-label" for="f_pre_alarm_cover_position">${this._t("Target Position (% open)", "Zielposition (% geöffnet)")}</label>
               <input class="form-input" id="f_pre_alarm_cover_position" type="number" min="0" max="100" value="${cfg.pre_alarm_cover_position ?? 20}" />
-              <span class="form-hint">Z. B. 20% für sanftes Kippen der Lamellen</span>
+              <span class="form-hint">${this._t("e.g. 20% to tilt blind slats open gently", "Z. B. 20% für sanftes Kippen der Lamellen")}</span>
             </div>
           </div>
 
-          ${this._renderEntityField("f_pre_alarm_script_entity", "Optionales Pre-Alarm Skript", cfg.pre_alarm_script_entity, "script.pre_alarm_custom", "HA-Skript, das zu Beginn von Phase 1 ausgeführt wird", "script", false)}
+          ${this._renderEntityField("f_pre_alarm_script_entity", this._t("Optional Pre-Alarm Script", "Optionales Pre-Alarm Skript"), cfg.pre_alarm_script_entity, "script.pre_alarm_custom", this._t("HA script executed at start of Phase 1", "HA-Skript, das zu Beginn von Phase 1 ausgeführt wird"), "script", false)}
         `;
 
       case "phase2":
         return `
-          <div class="form-section-title">Media Player & Audio</div>
-          ${this._renderEntityField("f_main_media_player_entities", "Media Player Entities (Kommagetrennt)", cfg.main_media_player_entities, "media_player.schlafzimmer_speaker", "Lautsprecher, auf denen der Wecker ertönen soll", "media_player", true)}
+          <div class="form-section-title">${this._t("Media Player & Audio", "Media Player & Audio")}</div>
+          ${this._renderEntityField("f_main_media_player_entities", this._t("Media Player Entities (comma-separated)", "Media Player Entities (Kommagetrennt)"), cfg.main_media_player_entities, "media_player.schlafzimmer_speaker", this._t("Speakers where the alarm should play", "Lautsprecher, auf denen der Wecker ertönen soll"), "media_player", true)}
 
-          ${this._renderEntityField("f_main_tts_media_player", "Eigener TTS Media Player (Optional)", cfg.main_tts_media_player, "media_player.google_nest_mini", "Separater Lautsprecher nur für Sprachausgabe. Musik-Player wird während der Ansage pausiert.", "media_player", false)}
+          ${this._renderEntityField("f_main_tts_media_player", this._t("Dedicated TTS Media Player (Optional)", "Eigener TTS Media Player (Optional)"), cfg.main_tts_media_player, "media_player.google_nest_mini", this._t("Separate speaker for speech only. Music player is paused during announcement.", "Separater Lautsprecher nur für Sprachausgabe. Musik-Player wird während der Ansage pausiert."), "media_player", false)}
 
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label" for="f_main_audio_content_id">Audio Content ID / Radio URL</label>
+              <label class="form-label" for="f_main_audio_content_id">${this._t("Audio Content ID / Radio URL", "Audio Content ID / Radio URL")}</label>
               <input class="form-input" id="f_main_audio_content_id" type="text" value="${cfg.main_audio_content_id || ""}" placeholder="http://stream.radioparadise.com/mp3-128" />
-              <span class="form-hint">Web-Radio Stream URL, Spotify URI oder Chime</span>
+              <span class="form-hint">${this._t("Web radio stream URL, Spotify URI or chime", "Web-Radio Stream URL, Spotify URI oder Chime")}</span>
             </div>
             <div class="form-group">
-              <label class="form-label" for="f_main_audio_content_type">Audio Content Type</label>
+              <label class="form-label" for="f_main_audio_content_type">${this._t("Audio Content Type", "Audio Content Type")}</label>
               <input class="form-input" id="f_main_audio_content_type" type="text" value="${cfg.main_audio_content_type || "music"}" placeholder="music" />
             </div>
           </div>
 
           <div class="form-checkbox-row">
             <div class="form-checkbox-label">
-              <span>Sanfter Audio-Fade-in</span>
-              <span class="form-hint">Lautstärke schrittweise von 1% auf Ziellautstärke anheben</span>
+              <span>${this._t("Gentle Audio Fade-in", "Sanfter Audio-Fade-in")}</span>
+              <span class="form-hint">${this._t("Gradually raise volume from 1% to target volume", "Lautstärke schrittweise von 1% auf Ziellautstärke anheben")}</span>
             </div>
             <label class="switch-toggle">
               <input type="checkbox" id="f_main_audio_fade_in" ${cfg.main_audio_fade_in ? "checked" : ""}>
@@ -3297,20 +3368,20 @@ class SmartWakePanel extends HTMLElement {
 
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label" for="f_main_audio_fade_duration">Fade-in Dauer (Sekunden)</label>
+              <label class="form-label" for="f_main_audio_fade_duration">${this._t("Fade-in Duration (Seconds)", "Fade-in Dauer (Sekunden)")}</label>
               <input class="form-input" id="f_main_audio_fade_duration" type="number" min="5" max="300" value="${cfg.main_audio_fade_duration ?? 30}" />
             </div>
             <div class="form-group">
-              <label class="form-label" for="f_main_audio_target_volume">Ziellautstärke (%)</label>
+              <label class="form-label" for="f_main_audio_target_volume">${this._t("Target Volume (%)", "Ziellautstärke (%)")}</label>
               <input class="form-input" id="f_main_audio_target_volume" type="number" min="1" max="100" value="${cfg.main_audio_target_volume ?? 50}" />
             </div>
           </div>
 
-          <div class="form-section-title">TTS Morgenbriefing</div>
+          <div class="form-section-title">${this._t("TTS Morning Briefing", "TTS Morgenbriefing")}</div>
           <div class="form-checkbox-row">
             <div class="form-checkbox-label">
-              <span>Sprachausgabe (TTS Begrüßung) aktivieren</span>
-              <span class="form-hint">Sagt z. B. die Uhrzeit und das aktuelle Wetter an</span>
+              <span>${this._t("Enable Voice Announcement (TTS Greeting)", "Sprachausgabe (TTS Begrüßung) aktivieren")}</span>
+              <span class="form-hint">${this._t("Announces time and current weather", "Sagt z. B. die Uhrzeit und das aktuelle Wetter an")}</span>
             </div>
             <label class="switch-toggle">
               <input type="checkbox" id="f_main_tts_enabled" ${cfg.main_tts_enabled ? "checked" : ""}>
@@ -3320,26 +3391,26 @@ class SmartWakePanel extends HTMLElement {
 
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label" for="f_main_tts_delay">TTS Verzögerung (Sekunden)</label>
+              <label class="form-label" for="f_main_tts_delay">${this._t("TTS Delay (Seconds)", "TTS Verzögerung (Sekunden)")}</label>
               <input class="form-input" id="f_main_tts_delay" type="number" min="0" max="300" value="${cfg.main_tts_delay ?? 15}" />
-              <span class="form-hint">Pausiert Musik nach N Sek., spricht TTS und setzt fort</span>
+              <span class="form-hint">${this._t("Pauses music after N sec., speaks TTS and resumes music", "Pausiert Musik nach N Sek., spricht TTS und setzt fort")}</span>
             </div>
             <div class="form-group">
-              <label class="form-label" for="f_main_tts_volume">TTS Lautstärke (%)</label>
+              <label class="form-label" for="f_main_tts_volume">${this._t("TTS Volume (%)", "TTS Lautstärke (%)")}</label>
               <input class="form-input" id="f_main_tts_volume" type="number" min="5" max="100" value="${cfg.main_tts_volume ?? 60}" />
-              <span class="form-hint">Eigene Lautstärke für die Sprachansage</span>
+              <span class="form-hint">${this._t("Dedicated volume for voice announcement", "Eigene Lautstärke für die Sprachansage")}</span>
             </div>
           </div>
 
           <div class="form-group">
-            <label class="form-label" for="f_main_tts_message">TTS Nachrichtentext</label>
-            <textarea class="form-textarea" id="f_main_tts_message" rows="3">${cfg.main_tts_message || "Guten Morgen! Es ist {time} Uhr, draußen sind es {temp}°C."}</textarea>
-            <span class="form-hint">Verfügbare Platzhalter: {name}, {time}, {temp}</span>
+            <label class="form-label" for="f_main_tts_message">${this._t("TTS Message Text", "TTS Nachrichtentext")}</label>
+            <textarea class="form-textarea" id="f_main_tts_message" rows="3">${cfg.main_tts_message || this._t("Good morning! It is {time}, outside temperature is {temp}°C.", "Guten Morgen! Es ist {time} Uhr, draußen sind es {temp}°C.")}</textarea>
+            <span class="form-hint">${this._t("Available placeholders: {name}, {time}, {temp}", "Verfügbare Platzhalter: {name}, {time}, {temp}")}</span>
           </div>
 
           <div class="form-row">
-            ${this._renderEntityField("f_main_tts_engine", "TTS Engine Entity (Optional)", cfg.main_tts_engine, "tts.google_en_com oder tts.piper", "Text-to-Speech Engine für Sprachansage", "tts", false)}
-            ${this._renderEntityField("f_main_script_entity", "Optionales Hauptalarm Skript", cfg.main_script_entity, "script.guten_morgen", "HA-Skript für den Hauptweckruf", "script", false)}
+            ${this._renderEntityField("f_main_tts_engine", this._t("TTS Engine Entity (Optional)", "TTS Engine Entity (Optional)"), cfg.main_tts_engine, "tts.google_en_com oder tts.piper", this._t("Text-to-Speech Engine for voice announcement", "Text-to-Speech Engine für Sprachansage"), "tts", false)}
+            ${this._renderEntityField("f_main_script_entity", this._t("Optional Main Alarm Script", "Optionales Hauptalarm Skript"), cfg.main_script_entity, "script.guten_morgen", this._t("HA script for the main alarm", "HA-Skript für den Hauptweckruf"), "script", false)}
           </div>
         `;
 
@@ -3347,8 +3418,8 @@ class SmartWakePanel extends HTMLElement {
         return `
           <div class="form-checkbox-row">
             <div class="form-checkbox-label">
-              <span>Phase 3 (Eskalations-Modus) aktivieren</span>
-              <span class="form-hint">Anti-Verschlaf-Schutz: Maximale Beleuchtung & Lautstärke nach Wartezeit</span>
+              <span>${this._t("Enable Phase 3 (Escalation Mode)", "Phase 3 (Eskalations-Modus) aktivieren")}</span>
+              <span class="form-hint">${this._t("Anti-oversleep protection: Maximum lighting & volume after delay", "Anti-Verschlaf-Schutz: Maximale Beleuchtung & Lautstärke nach Wartezeit")}</span>
             </div>
             <label class="switch-toggle">
               <input type="checkbox" id="f_escalation_enabled" ${cfg.escalation_enabled ? "checked" : ""}>
@@ -3358,26 +3429,26 @@ class SmartWakePanel extends HTMLElement {
 
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label" for="f_escalation_delay">Verzögerung bis Eskalation (Minuten)</label>
+              <label class="form-label" for="f_escalation_delay">${this._t("Delay until Escalation (Minutes)", "Verzögerung bis Eskalation (Minuten)")}</label>
               <input class="form-input" id="f_escalation_delay" type="number" min="1" max="60" value="${cfg.escalation_delay ?? 10}" />
-              <span class="form-hint">Minuten nach Hauptalarm ohne Snooze/Dismiss</span>
+              <span class="form-hint">${this._t("Minutes after main alarm without snooze/dismiss", "Minuten nach Hauptalarm ohne Snooze/Dismiss")}</span>
             </div>
             <div class="form-group">
-              <label class="form-label" for="f_escalation_volume">Eskalations-Lautstärke (%)</label>
+              <label class="form-label" for="f_escalation_volume">${this._t("Escalation Volume (%)", "Eskalations-Lautstärke (%)")}</label>
               <input class="form-input" id="f_escalation_volume" type="number" min="50" max="100" value="${cfg.escalation_volume ?? 90}" />
             </div>
             <div class="form-group">
-              <label class="form-label" for="f_escalation_volume_fade_duration">Sanfter Lautstärkeanstieg (Sekunden)</label>
+              <label class="form-label" for="f_escalation_volume_fade_duration">${this._t("Gentle Volume Rise (Seconds)", "Sanfter Lautstärkeanstieg (Sekunden)")}</label>
               <input class="form-input" id="f_escalation_volume_fade_duration" type="number" min="0" max="120" value="${cfg.escalation_volume_fade_duration ?? 30}" />
-              <span class="form-hint">Dauer für sanftes Hochfahren (z. B. 30s)</span>
+              <span class="form-hint">${this._t("Duration for smooth volume ramp-up (e.g. 30s)", "Dauer für sanftes Hochfahren (z. B. 30s)")}</span>
             </div>
           </div>
 
-          <div class="form-section-title">Eskalations-Licht & Rollos</div>
+          <div class="form-section-title">${this._t("Escalation Lights & Blinds", "Eskalations-Licht & Rollos")}</div>
           <div class="form-checkbox-row">
             <div class="form-checkbox-label">
-              <span>100% Kaltweiß einschalten</span>
-              <span class="form-hint">Schaltet den Raum schlagartig hell gegen Verschlafen</span>
+              <span>${this._t("Turn on 100% cold white", "100% Kaltweiß einschalten")}</span>
+              <span class="form-hint">${this._t("Turns bedroom brightly illuminated to prevent oversleeping", "Schaltet den Raum schlagartig hell gegen Verschlafen")}</span>
             </div>
             <label class="switch-toggle">
               <input type="checkbox" id="f_escalation_light_cold_white" ${cfg.escalation_light_cold_white ? "checked" : ""}>
@@ -3385,76 +3456,76 @@ class SmartWakePanel extends HTMLElement {
             </label>
           </div>
 
-          ${this._renderEntityField("f_escalation_light_entities", "Licht-Entities für Eskalation", cfg.escalation_light_entities, "light.schlafzimmer_hauptlicht", "Hauptbeleuchtung, die bei Eskalation eingeschaltet wird", "light", true)}
+          ${this._renderEntityField("f_escalation_light_entities", this._t("Light Entities for Escalation", "Licht-Entities für Eskalation"), cfg.escalation_light_entities, "light.schlafzimmer_hauptlicht", this._t("Main room lights switched on during escalation", "Hauptbeleuchtung, die bei Eskalation eingeschaltet wird"), "light", true)}
 
           <div class="form-row">
-            ${this._renderEntityField("f_escalation_cover_entities", "Rollos für Eskalation", cfg.escalation_cover_entities, "cover.schlafzimmer_rollo", "Rollos, die bei Eskalation komplett hochfahren", "cover", true)}
+            ${this._renderEntityField("f_escalation_cover_entities", this._t("Covers / Blinds for Escalation", "Rollos für Eskalation"), cfg.escalation_cover_entities, "cover.schlafzimmer_rollo", this._t("Blinds opened completely during escalation", "Rollos, die bei Eskalation komplett hochfahren"), "cover", true)}
             <div class="form-group">
-              <label class="form-label" for="f_escalation_cover_position">Zielposition (% geöffnet)</label>
+              <label class="form-label" for="f_escalation_cover_position">${this._t("Target Position (% open)", "Zielposition (% geöffnet)")}</label>
               <input class="form-input" id="f_escalation_cover_position" type="number" min="0" max="100" value="${cfg.escalation_cover_position ?? 100}" />
             </div>
           </div>
 
-          ${this._renderEntityField("f_escalation_script_entity", "Optionales Eskalations-Skript", cfg.escalation_script_entity, "script.alarm_escalation", "HA-Skript für Eskalations-Aktionen", "script", false)}
+          ${this._renderEntityField("f_escalation_script_entity", this._t("Optional Escalation Script", "Optionales Eskalations-Skript"), cfg.escalation_script_entity, "script.alarm_escalation", this._t("HA script for escalation actions", "HA-Skript für Eskalations-Aktionen"), "script", false)}
         `;
 
       case "anti_cheat":
         return `
-          <div class="form-section-title">Schlummer-Einstellungen</div>
+          <div class="form-section-title">${this._t("Snooze Settings", "Schlummer-Einstellungen")}</div>
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label" for="f_snooze_duration">Schlummerdauer (Minuten)</label>
+              <label class="form-label" for="f_snooze_duration">${this._t("Snooze Duration (Minutes)", "Schlummerdauer (Minuten)")}</label>
               <input class="form-input" id="f_snooze_duration" type="number" min="1" max="60" value="${cfg.snooze_duration ?? 8}" />
-              <span class="form-hint">Dauer eines Schlummervorgangs (z. B. 8 Min)</span>
+              <span class="form-hint">${this._t("Duration of a single snooze cycle (e.g. 8 min)", "Dauer eines Schlummervorgangs (z. B. 8 Min)")}</span>
             </div>
             <div class="form-group">
-              <label class="form-label" for="f_max_snooze_count">Max. Anzahl Schlummern (Snooze-Limit)</label>
+              <label class="form-label" for="f_max_snooze_count">${this._t("Max Snooze Count (Snooze Limit)", "Max. Anzahl Schlummern (Snooze-Limit)")}</label>
               <input class="form-input" id="f_max_snooze_count" type="number" min="0" max="10" value="${cfg.max_snooze_count ?? 2}" />
-              <span class="form-hint">Nach N Malen wird Snooze gesperrt – Quittier-Zwang!</span>
+              <span class="form-hint">${this._t("After N snoozes, snooze is blocked – forced dismiss required!", "Nach N Malen wird Snooze gesperrt – Quittier-Zwang!")}</span>
             </div>
           </div>
 
-          <div class="form-section-title">Hardware-Taster (Zigbee / Z-Wave)</div>
+          <div class="form-section-title">${this._t("Hardware Buttons (Zigbee / Z-Wave)", "Hardware-Taster (Zigbee / Z-Wave)")}</div>
           <div class="form-row">
-            ${this._renderEntityField("f_snooze_button_entity", "Snooze-Taster Entity", cfg.snooze_button_entity, "event.nachttisch_taster", "Hardware-Taster für Schlummern (Event, Button oder Sensor)", "event,button,sensor,binary_sensor", false)}
+            ${this._renderEntityField("f_snooze_button_entity", this._t("Snooze Button Entity", "Snooze-Taster Entity"), cfg.snooze_button_entity, "event.nachttisch_taster", this._t("Hardware button for snooze (event, button, sensor or binary_sensor)", "Hardware-Taster für Schlummern (Event, Button oder Sensor)"), "event,button,sensor,binary_sensor", false)}
             <div class="form-group">
-              <label class="form-label" for="f_snooze_button_event">Snooze Event-Typ / Aktion</label>
+              <label class="form-label" for="f_snooze_button_event">${this._t("Snooze Event Type / Action", "Snooze Event-Typ / Aktion")}</label>
               <input class="form-input" id="f_snooze_button_event" type="text" value="${cfg.snooze_button_event || ""}" placeholder="z. B. press, single, click" />
-              <span class="form-hint">Optional: Spezifischer Event-Typ oder Action-String (leer lassen für Standard)</span>
+              <span class="form-hint">${this._t("Optional: Specific event type or action string (leave blank for default)", "Optional: Spezifischer Event-Typ oder Action-String (leer lassen für Standard)")}</span>
             </div>
           </div>
           <div class="form-row">
-            ${this._renderEntityField("f_dismiss_button_entity", "Dismiss-Taster Entity", cfg.dismiss_button_entity, "event.nachttisch_taster_double", "Hardware-Taster für Quittieren (Event, Button oder Sensor)", "event,button,sensor,binary_sensor", false)}
+            ${this._renderEntityField("f_dismiss_button_entity", this._t("Dismiss Button Entity", "Dismiss-Taster Entity"), cfg.dismiss_button_entity, "event.nachttisch_taster_double", this._t("Hardware button for dismiss (event, button, sensor or binary_sensor)", "Hardware-Taster für Quittieren (Event, Button oder Sensor)"), "event,button,sensor,binary_sensor", false)}
             <div class="form-group">
-              <label class="form-label" for="f_dismiss_button_event">Dismiss Event-Typ / Aktion</label>
+              <label class="form-label" for="f_dismiss_button_event">${this._t("Dismiss Event Type / Action", "Dismiss Event-Typ / Aktion")}</label>
               <input class="form-input" id="f_dismiss_button_event" type="text" value="${cfg.dismiss_button_event || ""}" placeholder="z. B. double, double_press, hold" />
-              <span class="form-hint">Optional: Spezifischer Event-Typ oder Action-String (leer lassen für Standard)</span>
+              <span class="form-hint">${this._t("Optional: Specific event type or action string (leave blank for default)", "Optional: Spezifischer Event-Typ oder Action-String (leer lassen für Standard)")}</span>
             </div>
           </div>
 
-          <div class="form-section-title">Anti-Cheat Aufsteh-Beweis</div>
-          ${this._renderEntityField("f_dismiss_motion_entities", "Bewegungsmelder Badezimmer / Küche", cfg.dismiss_motion_entities, "binary_sensor.bad_motion, binary_sensor.kueche_motion", "Quittiert automatisch bei Bewegung im Bad oder in der Küche", "binary_sensor,sensor", true)}
+          <div class="form-section-title">${this._t("Anti-Cheat Get-out-of-bed Proof", "Anti-Cheat Aufsteh-Beweis")}</div>
+          ${this._renderEntityField("f_dismiss_motion_entities", this._t("Motion Sensors Bathroom / Kitchen", "Bewegungsmelder Badezimmer / Küche"), cfg.dismiss_motion_entities, "binary_sensor.bad_motion, binary_sensor.kueche_motion", this._t("Dismisses automatically when motion is detected in bathroom or kitchen", "Quittiert automatisch bei Bewegung im Bad oder in der Küche"), "binary_sensor,sensor", true)}
 
           <div class="form-group">
-            <label class="form-label" for="f_dismiss_nfc_tags">NFC Tag IDs (Spiegel / Kaffeemaschine)</label>
+            <label class="form-label" for="f_dismiss_nfc_tags">${this._t("NFC Tag IDs (Mirror / Coffee Maker)", "NFC Tag IDs (Spiegel / Kaffeemaschine)")}</label>
             <input class="form-input" id="f_dismiss_nfc_tags" type="text" value="${cfg.dismiss_nfc_tags || ""}" placeholder="tag_badspiegel, tag_kaffee" />
-            <span class="form-hint">Wecker stoppt erst nach Scannen des physischen NFC-Tags</span>
+            <span class="form-hint">${this._t("Alarm only stops after scanning physical NFC tag", "Wecker stoppt erst nach Scannen des physischen NFC-Tags")}</span>
           </div>
 
           <div class="form-row">
-            ${this._renderEntityField("f_dismiss_power_sensor", "Leistungssensor (Kaffeemaschine / Bad)", cfg.dismiss_power_sensor, "sensor.kaffeemaschine_leistung", "Quittiert bei Stromverbrauch über Schwellenwert", "sensor", false)}
+            ${this._renderEntityField("f_dismiss_power_sensor", this._t("Power Sensor (Coffee Maker / Bathroom)", "Leistungssensor (Kaffeemaschine / Bad)"), cfg.dismiss_power_sensor, "sensor.kaffeemaschine_leistung", this._t("Dismisses when power consumption exceeds threshold", "Quittiert bei Stromverbrauch über Schwellenwert"), "sensor", false)}
             <div class="form-group">
-              <label class="form-label" for="f_dismiss_power_threshold">Leistungsschwelle (Watt)</label>
+              <label class="form-label" for="f_dismiss_power_threshold">${this._t("Power Threshold (Watts)", "Leistungsschwelle (Watt)")}</label>
               <input class="form-input" id="f_dismiss_power_threshold" type="number" step="1" value="${cfg.dismiss_power_threshold ?? 10.0}" />
-              <span class="form-hint">Quittiert, wenn z. B. Kaffeemaschine eingeschaltet wird (> 10W)</span>
+              <span class="form-hint">${this._t("Dismisses when e.g. coffee maker is turned on (> 10W)", "Quittiert, wenn z. B. Kaffeemaschine eingeschaltet wird (> 10W)")}</span>
             </div>
           </div>
 
-          ${this._renderEntityField("f_dismiss_input_boolean", "Anti-Cheat Schalter / Helfer (input_boolean)", cfg.dismiss_input_boolean, "input_boolean.aufgestanden", "Quittiert automatisch, wenn dieser Schalter auf 'on' geschaltet wird (wird danach automatisch zurückgesetzt)", "input_boolean", false)}
+          ${this._renderEntityField("f_dismiss_input_boolean", this._t("Anti-Cheat Helper Switch (input_boolean)", "Anti-Cheat Schalter / Helfer (input_boolean)"), cfg.dismiss_input_boolean, "input_boolean.aufgestanden", this._t("Dismisses automatically when turned 'on' (automatically reset afterwards)", "Quittiert automatisch, wenn dieser Schalter auf 'on' geschaltet wird (wird danach automatisch zurückgesetzt)"), "input_boolean", false)}
         `;
 
       default:
-        return `<div>Ungültiger Tab</div>`;
+        return `<div>${this._t("Invalid Tab", "Ungültiger Tab")}</div>`;
     }
   }
 }

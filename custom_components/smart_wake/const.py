@@ -5,7 +5,7 @@ import os
 
 DOMAIN = "smart_wake"
 NAME = "Smart Wake"
-VERSION = "1.0.23"
+VERSION = "1.0.24"
 
 # Static assets and frontend paths
 URL_BASE = "/smart_wake_frontend"
@@ -179,7 +179,9 @@ DEFAULT_MAIN_AUDIO_TARGET_VOLUME = 0.5
 DEFAULT_MAIN_AUDIO_CONTENT_TYPE = "music"
 DEFAULT_MAIN_TTS_ENABLED = False
 DEFAULT_MAIN_TTS_MEDIA_PLAYER = ""
-DEFAULT_MAIN_TTS_MESSAGE = "Guten Morgen! Es ist {time} Uhr."
+DEFAULT_MAIN_TTS_MESSAGE = "Good morning! It is {time}."
+DEFAULT_MAIN_TTS_MESSAGE_DE = "Guten Morgen! Es ist {time} Uhr."
+DEFAULT_MAIN_TTS_MESSAGE_EN = "Good morning! It is {time}."
 DEFAULT_MAIN_TTS_DELAY = 15
 DEFAULT_MAIN_TTS_VOLUME = 0.6
 
